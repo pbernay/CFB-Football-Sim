@@ -6,11 +6,11 @@ import random
 class Player:
     # Constructor for the Player class. Initializes a new player with a
     # given name, strength, position.
-    def __init__(self, name, strength, position):
+    def __init__(self, name, strength):
         self.name = name  # Assign the provided name to the player.
         self.strength = strength
         # Assign the provided strength value to the player.
-        self.position = position  # Assign a position
+        # self.position = position  # Assign a position
 
 
 # Define the Team class to represent a football team.
