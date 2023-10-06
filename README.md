@@ -17,7 +17,7 @@ This project simulates college football games, seasons, and player stats. Dive i
 
 ## Planned Features
 
-# Highly Likely
+### Highly Likely
 
 - **CFB Playoffs**: Experience the pinnacle of college football.
 - **AP Poll**: Climb the rankings and achieve the top spot.
@@ -33,7 +33,7 @@ This project simulates college football games, seasons, and player stats. Dive i
   - **Position Based Rating**: Rate players based on their performance in specific positions, allowing for specialized team strategies.
 - **Boom or Bust System**: Players might significantly overperform or underperform based on various factors, adding unpredictability.
 
-# Likely
+### Likely
 
 - **Custom Schedules**: Tailor your season's matchups.
 - **Custom Teams**: Design and introduce your own teams.
@@ -42,7 +42,7 @@ This project simulates college football games, seasons, and player stats. Dive i
 - **Academic Challenges**: Players might face academic hurdles, potentially affecting their eligibility or performance.
 - **Other Team Coaches**: Interact with, compete against, or even hire and fire coaches of other teams.
 
-# Possible
+### Possible
 
 - **Custom League**: Create and customize leagues, defining rules, teams, and structures.
 - **Playing as D2 Team**: Take on the challenge of leading a Division 2 team.
@@ -53,7 +53,7 @@ This project simulates college football games, seasons, and player stats. Dive i
 - **Legacy Mode**: Players retire and become coaches, or their offspring become new players.
 - **Achievements & Challenges**: Unlock achievements based on in-game milestones and complete daily/weekly challenges for rewards.
 
-# Unlikely
+### Unlikely
 
 - **Commissioner Mode**: Oversee the league with a broader perspective.
 - **Multiplayer**: Challenge friends and AI in head-to-head matchups.
