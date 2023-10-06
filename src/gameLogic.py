@@ -1,16 +1,32 @@
 # Where to place classes such as Player, Team, and Game
 import random
 
+# Define a set of valid player positions
+VALID_POSITIONS = {
+    "Quarterback",
+    "Running Back",
+    "Wide Receiver",
+    "Offensive Linemen",
+    "Linebacker",
+    "Defensive Back",
+    "Defensive Linemen",
+    "Kicker",
+}
+
 
 # Define the Player class to represent an individual football player.
 class Player:
     # Constructor for the Player class. Initializes a new player with a
     # given name, strength, position.
-    def __init__(self, name, strength):
+    def __init__(self, name, strength, position):
         self.name = name  # Assign the provided name to the player.
         self.strength = strength
         # Assign the provided strength value to the player.
-        # self.position = position  # Assign a position
+        if position not in VALID_POSITIONS:
+            raise ValueError(
+                f"Invalid position {position}. Must be one of {', '.join(VALID_POSITIONS)}"
+            )
+        self.position = position  # Assign a position
 
 
 # Define the Team class to represent a football team.

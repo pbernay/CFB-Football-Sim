@@ -4,14 +4,14 @@ from gameLogic import Game, Player, Team
 
 
 players_team_a = [
-    Player("Player A1", 75),
-    Player("Player A2", 65),
-    Player("Player A3", 70),
+    Player("Player A1", 75, "Quarterback"),
+    Player("Player A2", 65, "Running Back"),
+    Player("Player A3", 70, "Wide Receiver"),
 ]
 players_team_b = [
-    Player("Player B1", 50),
-    Player("Player B2", 45),
-    Player("Player B3", 55),
+    Player("Player B1", 50, "Quarterback"),
+    Player("Player B2", 45, "Running Back"),
+    Player("Player B3", 55, "Wide Receiver"),
 ]
 
 # Create an instance of the Team class for each team, passing their names
