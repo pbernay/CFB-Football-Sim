@@ -3,14 +3,9 @@ import random
 
 # Define a set of valid player positions
 VALID_POSITIONS = {
-    "Quarterback",
-    "Running Back",
-    "Wide Receiver",
-    "Offensive Linemen",
-    "Linebacker",
-    "Defensive Back",
-    "Defensive Linemen",
-    "Kicker",
+    "Offense": ["Quarterback", "Running Back", "Wide Receiver", "Offensive Linemen"],
+    "Defense": ["Linebacker", "Defensive Back", "Defensive Linemen"],
+    "Special Teams": ["Kicker", "Punter"],
 }
 
 
