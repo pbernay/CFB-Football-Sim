@@ -2,10 +2,11 @@
 import random
 
 # Define a set of valid player positions
-VALID_POSITIONS = {
+valid_positions = {
     "Offense": ["Quarterback", "Running Back", "Wide Receiver", "Offensive Linemen"],
     "Defense": ["Linebacker", "Defensive Back", "Defensive Linemen"],
-    "Special Teams": ["Kicker", "Punter"],
+    "Kicker": ["Kicker"],
+    "Punter": ["Punter"],
 }
 
 
@@ -17,9 +18,14 @@ class Player:
         self.name = name  # Assign the provided name to the player.
         self.strength = strength
         # Assign the provided strength value to the player.
-        if position not in VALID_POSITIONS:
+        if position not in [
+            pos for subcategory in valid_positions.values() for pos in subcategory
+        ]:
+            all_positions = ", ".join(
+                [pos for subcategory in valid_positions.values() for pos in subcategory]
+            )
             raise ValueError(
-                f"Invalid position {position}. Must be one of {', '.join(VALID_POSITIONS)}"
+                f"Invalid position {position}. Must be one of {', '.join(all_positions)}"
             )
         self.position = position  # Assign a position
 
@@ -32,13 +38,22 @@ class Team:
         self.name = name  # Assign the provided name to the team.
         self.players = players  # Assign the list of players to the team.
         self.score = 0  # Initialize the team's score to zero.
+        self.offensive_rating = self.strength("Offense")
+        self.defensive_rating = self.strength("Defense")
+        self.kicker_rating = self.strength("Kicker")
 
-    # Property decorator to allow the method below to be accessed
-    # as an attribute.
-    @property
-    def strength(self):
+    def strength(self, category):
+        relevant_players = [
+            player
+            for player in self.players
+            if player.position in valid_positions[category]
+        ]
+        if not relevant_players:
+            return 0
         # Calculate and return the average strength of all players in the team.
-        return sum(player.strength for player in self.players) / len(self.players)
+        return sum(player.strength for player in relevant_players) / len(
+            relevant_players
+        )
 
 
 # Define the Game class to represent a football game between two teams.
@@ -50,17 +65,44 @@ class Game:
         self.team2 = team2  # Assign the second provided team as team2.
 
     # Method to simulate the outcome of the game.
-    def simulate(self):
-        # Simulate the game quarter-by-quarter
-        for _ in range(4):  # Assuming 4 quarters in a game
-            # Team 1 scores
-            if random.choices(
-                [True, False], weights=[self.team1.strength, 100 - self.team1.strength]
-            )[0]:
-                self.team1.score += random.randint(0, 3) * 7
+    def simulateGame(self):
+        total_drives = 20
 
-            # Team 2 scores
-            if random.choices(
-                [True, False], weights=[self.team2.strength, 100 - self.team2.strength]
-            )[0]:
-                self.team2.score += random.randint(0, 3) * 7
+        teamOff = self.team1
+        teamDef = self.team2
+
+        for drive_number in range(total_drives):
+            score = self.simulateDrive(teamOff, teamDef)
+            if score > 0:
+                print(
+                    f"Drive {drive_number + 1}: {teamOff.name} scored {score} points!"
+                )
+            teamOff.score += score
+
+            teamOff, teamDef = teamDef, teamOff
+
+    def simulateDrive(self, teamOff, teamDef):
+        return self.simulateScoring(teamOff, teamDef)
+
+    def simulateScoring(self, teamOff, teamDef):
+        # Calculate probability of getting into a scoring position
+        scoring_position_probability = teamOff.offensive_rating / (
+            teamOff.offensive_rating + teamDef.defensive_rating
+        )
+        if random.random() < scoring_position_probability:
+            outcome = random.choices(["td", "fg", "fd"], weights=[0.4, 0.4, 0.2])[0]
+
+            if outcome == "td":
+                if random.random() < teamOff.kicker_rating:
+                    return 7
+                else:
+                    return 6
+            elif outcome == "fg":
+                if random.random() < teamOff.kicker_rating:
+                    return 3
+                else:
+                    return 0
+            else:
+                return 0
+        else:
+            return 0
