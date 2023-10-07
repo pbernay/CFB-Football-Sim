@@ -55,7 +55,7 @@ This project simulates college football games, seasons, and player stats. Dive i
 
 ### Unlikely
 
-- **Commissioner Mode**: Oversee the league with a broader perspective.
+- **President/Director Mode**: Oversee the league with a broader perspective.
 - **Multiplayer**: Challenge friends and AI in head-to-head matchups.
 - **Mobile Game**: Take the simulation on the go.
 - **View the Draft to Professional Teams**: Track players as they transition to professional teams.
