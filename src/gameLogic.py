@@ -80,6 +80,19 @@ class Game:
             teamOff.score += score
 
             teamOff, teamDef = teamDef, teamOff
+        #Creates an overtime period if both teams are tied at the end of regulation
+        if teamOff.score == teamDef.score:
+            print(f"Overtime Period:")
+            total_drives = 4
+            for drive_number in range(total_drives):
+                score = self.simulateDrive(teamOff, teamDef)
+                if score > 0:
+                    print(
+                        f"Drive {drive_number + 21}: {teamOff.name} scored {score} points!"
+                    )
+                teamOff.score += score
+
+                teamOff, teamDef = teamDef, teamOff
 
     def simulateDrive(self, teamOff, teamDef):
         return self.simulateScoring(teamOff, teamDef)
