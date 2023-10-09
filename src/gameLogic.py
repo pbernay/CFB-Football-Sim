@@ -81,7 +81,7 @@ class Game:
 
             teamOff, teamDef = teamDef, teamOff
         # Creates an overtime period if both teams are tied at the end of regulation
-        if teamOff.score == teamDef.score:
+        while teamOff.score == teamDef.score:
             print(f"Overtime Period:")
             total_drives = 4
             for drive_number in range(total_drives):
@@ -106,12 +106,12 @@ class Game:
             outcome = random.choices(["td", "fg", "fd"], weights=[0.4, 0.4, 0.2])[0]
 
             if outcome == "td":
-                if random.random() < teamOff.kicker_rating:
+                if random.random() < (teamOff.kicker_rating)/101:
                     return 7
                 else:
                     return 6
             elif outcome == "fg":
-                if random.random() < teamOff.kicker_rating:
+                if random.random() < (teamOff.kicker_rating)/101:
                     return 3
                 else:
                     return 0
@@ -119,6 +119,7 @@ class Game:
                 return 0
         else:
             return 0
+
     def scoreboard_display(self, teamOff, teamDef):
         max_score_width = max(len(str(teamOff.score)), len(str(teamDef.score)))
         offscore = f"{teamOff.score:>{max_score_width}}"
@@ -127,22 +128,26 @@ class Game:
         defNameLength = 21 - len(teamDef.name)
         offNameLengthBottom = 16 - len(teamOff.name)
         offName = teamOff.name
-        for _ in range (offNameLength):
-            offName += ' '
+        for _ in range(offNameLength):
+            offName += " "
         defName = teamDef.name
         for _ in range(defNameLength):
-            defName += ' '
+            defName += " "
         offNameBottom = teamOff.name
         for _ in range(offNameLengthBottom):
-            offNameBottom += ' '
+            offNameBottom += " "
         print(" ___________________________________________________________________")
         print("/                             Scoreboard                            \\")
         print("|-------------------------------------------------------------------|")
         print("|                                                                   |")
         print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")
         print("|-------------------------------------------------------------------|")
-        print(f"| Home|                                            {offscore}               |")
-        print(f"| Away|                                            {defscore}               |")
+        print(
+            f"| Home|                                            {offscore}               |"
+        )
+        print(
+            f"| Away|                                            {defscore}               |"
+        )
         print("|                                                                   |")
         print("|-------------------------------------------------------------------|")
         print(f"|                Time: 0:00              Possession: X              |")
