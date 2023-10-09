@@ -23,7 +23,7 @@ This project simulates college football games, seasons, and player stats. Dive i
 - **AP Poll**: Climb the rankings and achieve the top spot.
 - **Rule Changes**: Rule changes that you can change at the end of the season
   - **Ability to Change Playoffs**: Customize playoff rules and structure.
-  - **D1 V FCS Challenge**: Test your team's mettle against different division teams.
+  - **FBS V FCS Challenge**: Test your team's mettle against different division teams.
 - **Training**: Enhance your team's skills and strategy.
 - **Enhanced Scouting**: Dive deeper into recruit stats with detailed views of the top 500.
 - **Enhanced Recruiting**: Employ advanced strategies to attract and secure recruits.
@@ -62,3 +62,4 @@ This project simulates college football games, seasons, and player stats. Dive i
 - **Modding Support**: Allow the community to create and share custom content, from gameplay mechanics to aesthetic mods. (Best example custom leagues based on real life)
 - **Assistant Coaching & Staff Management**: Recruit, manage, and strategize with assistant coaches and other staff members, influencing team performance.
 - **Watch the Game**: Experience the thrill of each match with a visual simulation, allowing you to witness key plays, team formations, and dynamic in-game moments unfold in real-time.
+- **Get Promoted to the NFL**:

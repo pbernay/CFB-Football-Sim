@@ -1,7 +1,7 @@
 # Where to place classes such as Player, Team, and Game
 import random
 
-# Define a set of valid player positions
+# Define a set of valid player positions - Will need to address the database names for positions
 valid_positions = {
     "Offense": ["Quarterback", "Running Back", "Wide Receiver", "Offensive Linemen"],
     "Defense": ["Linebacker", "Defensive Back", "Defensive Linemen"],
@@ -106,12 +106,12 @@ class Game:
             outcome = random.choices(["td", "fg", "fd"], weights=[0.4, 0.4, 0.2])[0]
 
             if outcome == "td":
-                if random.random() < (teamOff.kicker_rating)/101:
+                if random.random() < (teamOff.kicker_rating) / 101:
                     return 7
                 else:
                     return 6
             elif outcome == "fg":
-                if random.random() < (teamOff.kicker_rating)/101:
+                if random.random() < (teamOff.kicker_rating) / 101:
                     return 3
                 else:
                     return 0
@@ -137,7 +137,7 @@ class Game:
         for _ in range(offNameLengthBottom):
             offNameBottom += " "
         print(" ___________________________________________________________________")
-        print("/                             Scoreboard                            \\")
+        print("/                             Scoreboard                            \")
         print("|-------------------------------------------------------------------|")
         print("|                                                                   |")
         print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")
