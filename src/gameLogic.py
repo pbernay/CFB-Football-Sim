@@ -80,7 +80,7 @@ class Game:
             teamOff.score += score
 
             teamOff, teamDef = teamDef, teamOff
-        #Creates an overtime period if both teams are tied at the end of regulation
+        # Creates an overtime period if both teams are tied at the end of regulation
         if teamOff.score == teamDef.score:
             print(f"Overtime Period:")
             total_drives = 4
@@ -119,3 +119,21 @@ class Game:
                 return 0
         else:
             return 0
+    def scoreboard_display(self, teamOff, teamDef):
+        print(" ___________________________________________________________________")
+        print("/                             Scoreboard                            \\")
+        print("|-------------------------------------------------------------------|")
+        print("|                                                                   |")
+        print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")
+        print("|-------------------------------------------------------------------|")
+        print(f"| Home|                                            {teamOff.score}               |")
+        print(f"| Away|                                            {teamDef.score}               |")
+        print("|                                                                   |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                Time: 0:00              Possession: X              |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                Home: {teamOff.name}            Away: {teamDef.name}               |")
+        print("|                                                                   |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                         Home of the {teamOff.name}                        |")
+        print("|___________________________________________________________________|")

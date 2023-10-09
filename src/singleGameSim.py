@@ -43,3 +43,5 @@ game.simulateGame()
 print(f"{team_a.name} Score: {team_a.score}")
 # Print the final score of Team B.
 print(f"{team_b.name} Score: {team_b.score}")
+# Print final score in scoreboard form
+game.scoreboard_display(team_a, team_b)
