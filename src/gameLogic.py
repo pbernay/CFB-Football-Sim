@@ -120,20 +120,35 @@ class Game:
         else:
             return 0
     def scoreboard_display(self, teamOff, teamDef):
+        max_score_width = max(len(str(teamOff.score)), len(str(teamDef.score)))
+        offscore = f"{teamOff.score:>{max_score_width}}"
+        defscore = f"{teamDef.score:>{max_score_width}}"
+        offNameLength = 18 - len(teamOff.name)
+        defNameLength = 21 - len(teamDef.name)
+        offNameLengthBottom = 16 - len(teamOff.name)
+        offName = teamOff.name
+        for _ in range (offNameLength):
+            offName += ' '
+        defName = teamDef.name
+        for _ in range(defNameLength):
+            defName += ' '
+        offNameBottom = teamOff.name
+        for _ in range(offNameLengthBottom):
+            offNameBottom += ' '
         print(" ___________________________________________________________________")
         print("/                             Scoreboard                            \\")
         print("|-------------------------------------------------------------------|")
         print("|                                                                   |")
         print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")
         print("|-------------------------------------------------------------------|")
-        print(f"| Home|                                            {teamOff.score}               |")
-        print(f"| Away|                                            {teamDef.score}               |")
+        print(f"| Home|                                            {offscore}               |")
+        print(f"| Away|                                            {defscore}               |")
         print("|                                                                   |")
         print("|-------------------------------------------------------------------|")
         print(f"|                Time: 0:00              Possession: X              |")
         print("|-------------------------------------------------------------------|")
-        print(f"|                Home: {teamOff.name}            Away: {teamDef.name}               |")
+        print(f"|                Home: {offName}Away: {defName}|")
         print("|                                                                   |")
         print("|-------------------------------------------------------------------|")
-        print(f"|                         Home of the {teamOff.name}                        |")
+        print(f"|                         Home of the {offNameBottom}              |")
         print("|___________________________________________________________________|")
