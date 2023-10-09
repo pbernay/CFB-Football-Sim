@@ -80,6 +80,19 @@ class Game:
             teamOff.score += score
 
             teamOff, teamDef = teamDef, teamOff
+        # Creates an overtime period if both teams are tied at the end of regulation
+        if teamOff.score == teamDef.score:
+            print(f"Overtime Period:")
+            total_drives = 4
+            for drive_number in range(total_drives):
+                score = self.simulateDrive(teamOff, teamDef)
+                if score > 0:
+                    print(
+                        f"Drive {drive_number + 21}: {teamOff.name} scored {score} points!"
+                    )
+                teamOff.score += score
+
+                teamOff, teamDef = teamDef, teamOff
 
     def simulateDrive(self, teamOff, teamDef):
         return self.simulateScoring(teamOff, teamDef)
@@ -106,3 +119,36 @@ class Game:
                 return 0
         else:
             return 0
+    def scoreboard_display(self, teamOff, teamDef):
+        max_score_width = max(len(str(teamOff.score)), len(str(teamDef.score)))
+        offscore = f"{teamOff.score:>{max_score_width}}"
+        defscore = f"{teamDef.score:>{max_score_width}}"
+        offNameLength = 18 - len(teamOff.name)
+        defNameLength = 21 - len(teamDef.name)
+        offNameLengthBottom = 16 - len(teamOff.name)
+        offName = teamOff.name
+        for _ in range (offNameLength):
+            offName += ' '
+        defName = teamDef.name
+        for _ in range(defNameLength):
+            defName += ' '
+        offNameBottom = teamOff.name
+        for _ in range(offNameLengthBottom):
+            offNameBottom += ' '
+        print(" ___________________________________________________________________")
+        print("/                             Scoreboard                            \\")
+        print("|-------------------------------------------------------------------|")
+        print("|                                                                   |")
+        print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")
+        print("|-------------------------------------------------------------------|")
+        print(f"| Home|                                            {offscore}               |")
+        print(f"| Away|                                            {defscore}               |")
+        print("|                                                                   |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                Time: 0:00              Possession: X              |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                Home: {offName}Away: {defName}|")
+        print("|                                                                   |")
+        print("|-------------------------------------------------------------------|")
+        print(f"|                         Home of the {offNameBottom}              |")
+        print("|___________________________________________________________________|")
