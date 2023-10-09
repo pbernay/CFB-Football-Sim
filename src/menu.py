@@ -1,10 +1,13 @@
 def main_menu():
-    print("Main Menu:")
-    print("1) Quick Play") # aka single game mode
-    print("2) Career Mode") # aka coach mode
-    print("3) Season Mode")
-    print("4) Settings")
-    print("5) Quit")
+    print("╔═════════════════════════════╗")
+    print("║          Main Menu          ║")
+    print("╠═════════════════════════════╣")
+    print("║ 1. Quick Play               ║") # aka single game mode
+    print("║ 2. Career Mode              ║") # aka coach mode
+    print("║ 3. Season Mode              ║")
+    print("║ 4. Settings                 ║")
+    print("║ 5. Quit                     ║")
+    print("╚═════════════════════════════╝")
 
 def quickPlay():
     print("Quick Play:")
