@@ -3,7 +3,7 @@ import random
 
 
 def clearCSV():
-    with open("saveData\players.csv", "w"):
+    with open("saveData\coaches.csv", "w"):
         pass
 
 
@@ -11,53 +11,56 @@ clearCSV()
 
 
 # list of possible first names
-with open("playerFirstNames.txt", "r") as file:
+with open("coachFirstNames.txt", "r") as file:
     firstNames = [name.strip() for name in file.readlines()]
 
 # list of possible last names
-with open("playerLastNames.txt", "r") as file:
+with open("coachLastNames.txt", "r") as file:
     lastNames = [name.strip() for name in file.readlines()]
 
-# list of possible hometowns
-with open("cities.txt", "r") as file:
-    cities = [city.strip() for city in file.readlines()]
 
-# list of possible positions
-positions = [
-    "QB",
-    "RB",
-    "WR",
-    "TE",
-    "OT",
-    "OG",
-    "C",
-    "DE",
-    "DT",
-    "LB",
-    "CB",
-    "S",
-    "K",
-    "P",
-]
+# weights the ages to make them more normal
+def weightAge():
+    ages = list(range(25, 75))
 
+    weights = [
+        0.1
+        if a <= 32
+        else 0.3
+        if a <= 40
+        else 0.3
+        if a <= 50
+        else 0.2
+        if a <= 60
+        else 0.1
+        for a in ages
+    ]
 
-# generates the age and class while some ages more common
-# binds age with class (so there is not an 18yo college senior)
-def ageClass():
-    ages = [18, 19, 20, 21, 22, 23, 24]
-    weights = [0.1, 0.3, 0.3, 0.15, 0.05, 0.075, 0.025]
     age = random.choices(ages, weights, k=1)[0]
+    return age
 
-    if age == 18:
-        classYear = "Freshman"
-    elif age == 19:
-        classYear = "Sophomore"
-    elif age == 20:
-        classYear = "Junior"
-    else:
-        classYear = "Senior"
 
-    return age, classYear
+# weights the years of exp to make them normal
+def weightExp():
+    # makes a max exp that a person can have based on their age
+    maxExp = age - 25 if age > 25 else 0
+    exp = list(range(0, maxExp + 1))
+
+    weights = [
+        0.4
+        if e <= 2
+        else 0.3
+        if e <= 5
+        else 0.2
+        if e <= 9
+        else 0.075
+        if e <= 20
+        else 0.025
+        for e in exp
+    ]
+
+    exp = random.choices(exp, weights, k=1)[0]
+    return exp
 
 
 # creates a weighted overall rating toward favoring lower ratings
@@ -76,23 +79,22 @@ def weightOverall():
         else 0.1  # 10% 80-100
         for r in ratings
     ]
-
-    # changes overall based on age
-    if age <= 19:
+    # changes overall based on exp
+    if yearsOfExp <= 5:
         # half as likely to get an overall over 60
         adjustment = [0.5 if r > 60 else 1 for r in ratings]
-    elif age == 20:
+    elif yearsOfExp == 10:
         # half as likely to get an overall over 75
         adjustment = [0.5 if r > 75 else 1 for r in ratings]
     else:
         adjustment = [1 for r in ratings]
 
     # applys the adjustment to the weights
-    adjAgeWeights = [base * adj for base, adj in zip(weights, adjustment)]
+    adjExpWeights = [base * adj for base, adj in zip(weights, adjustment)]
 
     # normalize the weights so they can add to 1
-    ttlWeights = sum(adjAgeWeights)
-    normalizedWeights = [w / ttlWeights for w in adjAgeWeights]
+    ttlWeights = sum(adjExpWeights)
+    normalizedWeights = [w / ttlWeights for w in adjExpWeights]
 
     overall = random.choices(ratings, normalizedWeights, k=1)[0]
     return overall
@@ -118,7 +120,7 @@ def weightPotential():
 
 
 # File path please edit for what you need to generate
-filePath = "saveData\players.csv"
+filePath = "saveData\coaches.csv"
 
 # Creates the csv
 with open(filePath, "w", newline="") as file:
@@ -126,40 +128,31 @@ with open(filePath, "w", newline="") as file:
     # Header
     writer.writerow(
         [
-            "PlayerID",
+            "CoachID",
             "Fname",
             "Lname",
-            "Position",
+            "Years Of Exp",
             "Overall",
-            "TeamID",
             "Age",
-            "Year",
-            "InjuryStatus",
             "Potential",
-            "Recruit?",
-            "Hometown",
         ]
     )
 
     # Sample Data
-    for i in range(13050):
-        age, classYear = ageClass()
+    for i in range(261):
+        age = weightAge()
+        yearsOfExp = weightExp()
         overall = weightOverall()
         potential = weightPotential()
 
         writer.writerow(
             [
-                "pID" + str(i + 1),  # player ID
+                "cID" + str(i + 1),  # coach ID
                 random.choice(firstNames),  # first name
                 random.choice(lastNames),  # last name
-                random.choice(positions),  # position
+                yearsOfExp,  # Years of exp
                 overall,  # overall
-                (i % 261) + 1,  # team
                 age,  # age
-                classYear,  # class/year
-                random.choices([0, 1], [0.995, 0.005], k=1)[0],  # injury
                 potential,  # potential
-                0,  # Recruit?
-                random.choice(cities),
             ]
         )
