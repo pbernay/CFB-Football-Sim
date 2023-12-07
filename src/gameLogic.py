@@ -137,7 +137,7 @@ class Game:
         for _ in range(offNameLengthBottom):
             offNameBottom += " "
         print(" ___________________________________________________________________")
-        print("/                             Scoreboard                            \")
+        print("/                             Scoreboard                            \ ")
         print("|-------------------------------------------------------------------|")
         print("|                                                                   |")
         print("|     |  Qtr 1  |  Qtr 2  |  Qtr 3  |  Qtr 4  |  Total  |  Down  |  |")

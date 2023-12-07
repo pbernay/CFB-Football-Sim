@@ -40,6 +40,39 @@ positions = [
     "P",
 ]
 
+# List of Possible Player Status
+status = ["Recruit", "Current", "Graduated"]
+
+# List of Possible Player Injuries
+injuryTypes = {
+    "Ankle Sprain": (0.20, (1, 3)),  # 20% chance, 1-3 games
+    "Concussion": (0.10, (1, 6)),  # 10% chance, 1-6 games
+    "Hamstring Strain": (0.15, (1, 4)),  # 15% chance, 1-4 games
+    "ACL Tear": (0.05, (8, 12)),  # 5% chance, 8-12 games
+    "MCL Sprain": (0.02, (3, 6)),  # 2% chance, 3-6 games
+    "Meniscus Tear": (0.04, (4, 8)),  # 4% chance, 4-8 games
+    "Groin Pull": (0.08, (1, 3)),  # 8% chance, 1-3 games
+    "Shoulder Dislocation": (0.07, (2, 6)),  # 7% chance, 2-6 games
+    "Achilles Tendonitis": (0.03, (3, 5)),  # 3% chance, 3-5 games
+    "Turf Toe": (0.06, (2, 4)),  # 6% chance, 2-4 games
+    "Quadriceps Strain": (0.07, (1, 3)),  # 7% chance, 1-3 games
+    "Shin Splints": (0.04, (1, 3)),  # 4% chance, 1-3 games
+    "Calf Strain": (0.06, (1, 3)),  # 6% chance, 1-3 games
+    "Hip Flexor Strain": (0.05, (1, 4)),  # 5% chance, 1-4 games
+    "Patellar Tendinitis": (0.03, (2, 4)),  # 3% chance, 2-4 games
+    "Bicep Tendonitis": (0.02, (2, 4)),  # 2% chance, 2-4 games
+    "Rotator Cuff Tear": (0.02, (4, 8)),  # 2% chance, 4-8 games
+    "Fractured Clavicle": (0.01, (6, 10)),  # 1% chance, 6-10 games
+    "Herniated Disc": (0.01, (4, 8)),  # 1% chance, 4-8 games
+    "Pectoral Tear": (0.01, (5, 10)),  # 1% chance, 5-10 games
+    "Plantar Fasciitis": (0.02, (3, 5)),  # 2% chance, 3-5 games
+    "Elbow Dislocation": (0.01, (3, 6)),  # 1% chance, 3-6 games
+    "Hand Fracture": (0.02, (2, 6)),  # 2% chance, 2-6 games
+    "Neck Strain": (0.02, (1, 3)),  # 2% chance, 1-3 games
+    "Lumbar Strain": (0.03, (2, 5)),  # 3% chance, 2-5 games
+    "Disciplinary Suspension": (0.05, (1, 16)),  # 5% chance, 1-16 games
+}
+
 
 # generates the age and class while some ages more common
 # binds age with class (so there is not an 18yo college senior)
@@ -117,6 +150,18 @@ def weightPotential():
     return potential
 
 
+# picks a random injury based on the injury types and probabilities
+def injuryType():
+    injuryTypeCondition = list(injuryTypes.keys())
+    probs = [condition[0] for condition in injuryType.values()]
+    randomCondition = random.choices(injuryTypeCondition, weights=probs)
+    return randomCondition
+
+
+# picks a random injury duration based on the injury type
+def injuryDuration():
+    
+
 # File path please edit for what you need to generate
 filePath = "saveData\players.csv"
 
@@ -134,9 +179,10 @@ with open(filePath, "w", newline="") as file:
             "TeamID",
             "Age",
             "Year",
-            "InjuryStatus",
+            "InjuryType",
+            "InjuryDuration",
             "Potential",
-            "Recruit?",
+            "PlayerStatus",
             "Hometown",
         ]
     )
@@ -157,9 +203,10 @@ with open(filePath, "w", newline="") as file:
                 (i % 261) + 1,  # team
                 age,  # age
                 classYear,  # class/year
-                random.choices([0, 1], [0.995, 0.005], k=1)[0],  # injury
+                random.choices(["N/A", injuryType()], [0.995, 0.005], k=1)[0],  # injurytype
+                0,  # injuryDuration
                 potential,  # potential
-                0,  # Recruit?
+                random.choices([status], [0, 1, 0], k=1)[0],  # PlayerStatus
                 random.choice(cities),
             ]
         )
