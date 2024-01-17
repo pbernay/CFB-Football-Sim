@@ -1,21 +1,31 @@
 import csv
 import random
-
+import os
 
 def clearCSV():
-    with open("saveData\coaches.csv", "w"):
+    # Correct relative path from the parent directory of 'intPlayerGen.py'
+    directory = os.path.join("data", "saveData")
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    # Correct the path here as well
+    with open(os.path.join(directory, "coaches.csv"), "w"):
         pass
-
 
 clearCSV()
 
 
 # list of possible first names
-with open("coachFirstNames.txt", "r") as file:
+script_dir = os.path.dirname(__file__)  # <-- absolute dir the script is in
+rel_path = "coachFirstNames.txt"
+abs_file_path = os.path.join(script_dir, rel_path)
+with open(abs_file_path, "r") as file:
     firstNames = [name.strip() for name in file.readlines()]
 
 # list of possible last names
-with open("coachLastNames.txt", "r") as file:
+script_dir = os.path.dirname(__file__)  # <-- absolute dir the script is in
+rel_path = "coachLastNames.txt"
+abs_file_path = os.path.join(script_dir, rel_path)
+with open(abs_file_path, "r") as file:
     lastNames = [name.strip() for name in file.readlines()]
 
 
@@ -120,7 +130,7 @@ def weightPotential():
 
 
 # File path please edit for what you need to generate
-filePath = "saveData\coaches.csv"
+filePath = os.path.join("data", "saveData", "coaches.csv")
 
 # Creates the csv
 with open(filePath, "w", newline="") as file:

@@ -1,25 +1,42 @@
 import csv
 import random
+import os
 
 
 def clearCSV():
-    with open("saveData\players.csv", "w"):
+    # Correct relative path from the parent directory of 'intPlayerGen.py'
+    directory = os.path.join("data", "saveData")
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    # Correct the path here as well
+    with open(os.path.join(directory, "players.csv"), "w"):
         pass
 
 
 clearCSV()
 
+# Since your script is in the 'data' directory, the path to 'players.csv' should be directly to 'saveData'
+filePath = os.path.join("data", "saveData", "players.csv")
 
 # list of possible first names
-with open("playerFirstNames.txt", "r") as file:
+script_dir = os.path.dirname(__file__)  # <-- absolute dir the script is in
+rel_path = "playerFirstNames.txt"
+abs_file_path = os.path.join(script_dir, rel_path)
+with open(abs_file_path, "r") as file:
     firstNames = [name.strip() for name in file.readlines()]
 
 # list of possible last names
-with open("playerLastNames.txt", "r") as file:
+script_dir = os.path.dirname(__file__)  # <-- absolute dir the script is in
+rel_path = "playerLastNames.txt"
+abs_file_path = os.path.join(script_dir, rel_path)
+with open(abs_file_path, "r") as file:
     lastNames = [name.strip() for name in file.readlines()]
 
 # list of possible hometowns
-with open("cities.txt", "r") as file:
+script_dir = os.path.dirname(__file__)  # <-- absolute dir the script is in
+rel_path = "cities.txt"
+abs_file_path = os.path.join(script_dir, rel_path)
+with open(abs_file_path, "r") as file:
     cities = [city.strip() for city in file.readlines()]
 
 # list of possible positions
@@ -153,17 +170,18 @@ def weightPotential():
 # picks a random injury based on the injury types and probabilities
 def injuryType():
     injuryTypeCondition = list(injuryTypes.keys())
-    probs = [condition[0] for condition in injuryType.values()]
+    probs = [condition[0] for condition in injuryTypes.values()]
     randomCondition = random.choices(injuryTypeCondition, weights=probs)
     return randomCondition
 
 
 # picks a random injury duration based on the injury type
-def injuryDuration():
-    
+def injuryDuration(injury):
+    if injury == "N/A":
+        return 0  # If there's no injury, the duration is 0
+    duration_range = injuryTypes[injury][1]
+    return random.randint(duration_range[0], duration_range[1])
 
-# File path please edit for what you need to generate
-filePath = "saveData\players.csv"
 
 # Creates the csv
 with open(filePath, "w", newline="") as file:
@@ -192,6 +210,10 @@ with open(filePath, "w", newline="") as file:
         age, classYear = ageClass()
         overall = weightOverall()
         potential = weightPotential()
+        injury = injuryType()[
+            0
+        ]  # Get the first item from the list returned by injuryType
+        injury_duration = injuryDuration(injury)
 
         writer.writerow(
             [
@@ -203,10 +225,10 @@ with open(filePath, "w", newline="") as file:
                 (i % 261) + 1,  # team
                 age,  # age
                 classYear,  # class/year
-                random.choices(["N/A", injuryType()], [0.995, 0.005], k=1)[0],  # injurytype
-                0,  # injuryDuration
-                potential,  # potential
-                random.choices([status], [0, 1, 0], k=1)[0],  # PlayerStatus
-                random.choice(cities),
+                "",  # injurytype
+                "",  # injuryDuration
+                potential,  # potential rating
+                "Current",  # PlayerStatus
+                random.choice(cities),  # hometown
             ]
         )
