@@ -2,6 +2,8 @@ import csv
 import random
 import os
 
+from src.utils import numberOfTeams
+
 used_locations = set()
 
 
@@ -18,7 +20,6 @@ def clearCSV():
 clearCSV()
 
 # sample data
-numberOfTeams = 261
 cities = []
 states = []
 

@@ -1,6 +1,13 @@
 import csv
 import random
 import os
+import sys
+
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+
+from src import utils
 
 
 def clearCSV():
@@ -40,22 +47,22 @@ with open(abs_file_path, "r") as file:
     cities = [city.strip() for city in file.readlines()]
 
 # list of possible positions
-positions = [
-    "QB",
-    "RB",
-    "WR",
-    "TE",
-    "OT",
-    "OG",
-    "C",
-    "DE",
-    "DT",
-    "LB",
-    "CB",
-    "S",
-    "K",
-    "P",
-]
+positions = {
+    "QB": {"min": 2, "max": 4},
+    "RB": {"min": 2, "max": 5},
+    "WR": {"min": 4, "max": 8},
+    "TE": {"min": 2, "max": 5},
+    "OT": {"min": 3, "max": 6},
+    "OG": {"min": 3, "max": 6},
+    "C": {"min": 2, "max": 4},
+    "DE": {"min": 3, "max": 6},
+    "DT": {"min": 3, "max": 6},
+    "LB": {"min": 4, "max": 8},
+    "CB": {"min": 3, "max": 6},
+    "S": {"min": 3, "max": 6},
+    "K": {"min": 1, "max": 2},
+    "P": {"min": 1, "max": 2},
+}
 
 # List of Possible Player Status
 status = ["Recruit", "Current", "Graduated"]
@@ -111,7 +118,7 @@ def ageClass():
 
 
 # creates a weighted overall rating toward favoring lower ratings
-def weightOverall():
+def weightOverall(age):
     ratings = list(range(40, 101))
 
     weights = [
@@ -183,6 +190,38 @@ def injuryDuration(injury):
     return random.randint(duration_range[0], duration_range[1])
 
 
+def addPlayerToTeam(team_id, position, writer, firstNames, lastNames, cities):
+    age, classYear = ageClass()
+    overall = weightOverall(age)
+    potential = weightPotential()
+    injury = injuryType()[0]
+    injury_duration = injuryDuration(injury)
+
+    writer.writerow(
+        [
+            f"pID{team_id}_{teamPositionCounts[team_id][position] + 1}",  # player ID
+            random.choice(firstNames),  # first name
+            random.choice(lastNames),  # last name
+            position,  # position
+            overall,  # overall
+            team_id,  # team
+            age,  # age
+            classYear,  # class/year
+            "",  # injurytype
+            "",  # injuryDuration
+            potential,  # potential rating
+            "Current",  # PlayerStatus
+            random.choice(cities),  # hometown
+        ]
+    )
+    teamPositionCounts[team_id][position] += 1
+
+
+teamPositionCounts = {
+    team_id: {position: 0 for position in positions}
+    for team_id in range(1, utils.numberOfTeams + 1)
+}
+
 # Creates the csv
 with open(filePath, "w", newline="") as file:
     writer = csv.writer(file)
@@ -205,30 +244,19 @@ with open(filePath, "w", newline="") as file:
         ]
     )
 
-    # Sample Data
-    for i in range(13050):
-        age, classYear = ageClass()
-        overall = weightOverall()
-        potential = weightPotential()
-        injury = injuryType()[
-            0
-        ]  # Get the first item from the list returned by injuryType
-        injury_duration = injuryDuration(injury)
+    for team_id in range(1, utils.numberOfTeams + 1):
+        for position, requirements in positions.items():
+            for _ in range(requirements["min"]):
+                # Generate a minimum number of players for each position
+                addPlayerToTeam(
+                    team_id, position, writer, firstNames, lastNames, cities
+                )
 
-        writer.writerow(
-            [
-                "pID" + str(i + 1),  # player ID
-                random.choice(firstNames),  # first name
-                random.choice(lastNames),  # last name
-                random.choice(positions),  # position
-                overall,  # overall
-                (i % 261) + 1,  # team
-                age,  # age
-                classYear,  # class/year
-                "",  # injurytype
-                "",  # injuryDuration
-                potential,  # potential rating
-                "Current",  # PlayerStatus
-                random.choice(cities),  # hometown
-            ]
-        )
+            additional_players = random.randint(
+                0, requirements["max"] - requirements["min"]
+            )
+            for _ in range(additional_players):
+                # Optionally add more players, up to the maximum
+                addPlayerToTeam(
+                    team_id, position, writer, firstNames, lastNames, cities
+                )
