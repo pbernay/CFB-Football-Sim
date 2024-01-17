@@ -1,26 +1,28 @@
 # Basic Game Simulation
 
+import sqlite3
+
+# Database connection setup
+conn = sqlite3.connect(
+    "data/saveData/theDatabase.db"
+)  # Update the path and connector as per your database
+cursor = conn.cursor()
+
+
 from gameLogic import Game, Player, Team
 
+team_a_ID = 8
+team_b_ID = 25
 
-players_team_a = [
-    Player("Player A1", 75, "Quarterback"),
-    Player("Player A2", 65, "Running Back"),
-    Player("Player A3", 70, "Wide Receiver"),
-    Player("Player A4", 60, "Kicker"),
-    Player("Player A5", 40, "Linebacker"),
-    Player("Player A6", 35, "Defensive Back"),
-    Player("Player A7", 40, "Defensive Linemen"),
-]
-players_team_b = [
-    Player("Player B1", 50, "Quarterback"),
-    Player("Player B2", 45, "Running Back"),
-    Player("Player B3", 55, "Wide Receiver"),
-    Player("Player B4", 80, "Kicker"),
-    Player("Player B5", 70, "Linebacker"),
-    Player("Player B6", 75, "Defensive Back"),
-    Player("Player B7", 85, "Defensive Linemen"),
-]
+
+def get_players_for_team(teamID):
+    query = f"SELECT PlayerID, Overall, Position FROM Players WHERE TeamID = {teamID}"
+    cursor.execute(query)
+    return [Player(row[0], row[1], row[2]) for row in cursor.fetchall()]
+
+
+players_team_a = get_players_for_team(team_a_ID)
+players_team_b = get_players_for_team(team_b_ID)
 
 # Create an instance of the Team class for each team, passing their names
 # and the player instances.
