@@ -11,8 +11,8 @@ cursor = conn.cursor()
 
 from gameLogic import Game, Player, Team
 
-team_a_ID = 8
-team_b_ID = 25
+team_a_ID = "'tID8'"
+team_b_ID = "'tID3'"
 
 
 def get_players_for_team(teamID):

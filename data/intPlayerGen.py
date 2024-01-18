@@ -6,7 +6,6 @@ import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
-
 from src import utils
 
 
@@ -199,12 +198,12 @@ def addPlayerToTeam(team_id, position, writer, firstNames, lastNames, cities):
 
     writer.writerow(
         [
-            f"pID{team_id}_{teamPositionCounts[team_id][position] + 1}",  # player ID
+            f"pID{utils.incrementPlayerCount()}",  # player ID
             random.choice(firstNames),  # first name
             random.choice(lastNames),  # last name
             position,  # position
             overall,  # overall
-            team_id,  # team
+            f"tID{team_id}",  # team
             age,  # age
             classYear,  # class/year
             "",  # injurytype
