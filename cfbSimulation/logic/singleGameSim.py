@@ -9,7 +9,7 @@ conn = sqlite3.connect(
 cursor = conn.cursor()
 
 
-from gameLogic import Game, Player, Team
+from cfbSimulation.logic.gameLogic import Game, Player, Team
 
 team_a_ID = "'tID8'"
 team_b_ID = "'tID3'"

@@ -2,7 +2,7 @@ import csv
 import random
 import os
 
-from src.utils import numberOfTeams
+from cfbSimulation.utils.utils import numberOfTeams
 
 used_locations = set()
 
