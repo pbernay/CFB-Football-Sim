@@ -75,7 +75,7 @@ This project is licensed under the [MIT License] - see the [LICENSE.txt](LICENSE
 
 ## Contact
 
-- Paul Bernay - [LinkedIn](https://www.linkedin.com/in/paul-bernay-bbbb7b16b/)
+- Paul Bernay - [LinkedIn](www.linkedin.com/in/pbernay)
 - Project Link: [GitHub](https://github.com/pbernay/CFB-Football-Sim)
 
 ## Additional Notes
