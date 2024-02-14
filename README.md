@@ -1,6 +1,7 @@
 # College Football Simulation Game
 
 This project simulates college football games, seasons, and player stats. Dive into the world of college football and manage your team to victory!
+This Game is in-progress and is a passion project that I like to do to further my skills at programming, project management, and game development.
 
 ## Core Features
 
@@ -62,4 +63,20 @@ This project simulates college football games, seasons, and player stats. Dive i
 - **Modding Support**: Allow the community to create and share custom content, from gameplay mechanics to aesthetic mods. (Best example custom leagues based on real life)
 - **Assistant Coaching & Staff Management**: Recruit, manage, and strategize with assistant coaches and other staff members, influencing team performance.
 - **Watch the Game**: Experience the thrill of each match with a visual simulation, allowing you to witness key plays, team formations, and dynamic in-game moments unfold in real-time.
-- **Get Promoted to the NFL**:
+- **Get Promoted to the NFL**: Get promoted to the big stage and advance your legacy in an NFL like league.
+
+## Getting Started
+
+In-Progress(Include how to install, use, and configure the game)
+
+## License
+
+This project is licensed under the [MIT License] - see the [LICENSE.txt](LICENSE.txt) file for details.
+
+## Contact
+
+- Paul Bernay - [LinkedIn](https://www.linkedin.com/in/paul-bernay-bbbb7b16b/)
+- Project Link: [GitHub](https://github.com/pbernay/CFB-Football-Sim)
+
+## Additional Notes
+
