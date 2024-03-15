@@ -12,48 +12,76 @@ valid_positions = {
 
 # Define the Player class to represent an individual football player.
 class Player:
-    # Constructor for the Player class. Initializes a new player with a
-    # given name, strength, position.
-    def __init__(self, name, strength, position):
-        self.name = name  # Assign the provided name to the player.
-        self.strength = strength
-        # Assign the provided strength value to the player.
-        if position not in [
-            pos for subcategory in valid_positions.values() for pos in subcategory
-        ]:
-            all_positions = ", ".join(
-                [pos for subcategory in valid_positions.values() for pos in subcategory]
-            )
-            raise ValueError(
-                f"Invalid position {position}. Must be one of {', '.join(all_positions)}"
-            )
-        self.position = position  # Assign a position
+    def __init__(
+        self,
+        PlayerID,
+        Fname,
+        Lname,
+        Position,
+        Overall,
+        TeamID,
+        Age,
+        Year,
+        InjuryType,
+        InjuryDuration,
+        Potential,
+        PlayerStatus,
+        Hometown,
+        adjustedRating,
+        role,
+    ):
+        self.PlayerID = PlayerID
+        self.Fname = Fname
+        self.Lname = Lname
+        self.Position = Position
+        self.Overall = Overall
+        self.TeamID = TeamID
+        self.Age = Age
+        self.Year = Year
+        self.InjuryType = InjuryType
+        self.InjuryDuration = InjuryDuration
+        self.Potential = Potential
+        self.PlayerStatus = PlayerStatus
+        self.Hometown = Hometown
+        self.adjustedRating = adjustedRating
+        self.role = role
+
+    def calculate_strength(self):
+        # Calculate the strength of the player based on their overall rating and potential.
+        return (self.Overall + self.Potential) / 2
 
 
 # Define the Team class to represent a football team.
 class Team:
-    # Constructor for the Team class. Initializes a new team with a given name
-    #  and a list of players.
-    def __init__(self, name, players):
-        self.name = name  # Assign the provided name to the team.
-        self.players = players  # Assign the list of players to the team.
-        self.score = 0  # Initialize the team's score to zero.
-        self.offensive_rating = self.strength("Offense")
-        self.defensive_rating = self.strength("Defense")
-        self.kicker_rating = self.strength("Kicker")
-
-    def strength(self, category):
-        relevant_players = [
-            player
-            for player in self.players
-            if player.position in valid_positions[category]
-        ]
-        if not relevant_players:
-            return 0
-        # Calculate and return the average strength of all players in the team.
-        return sum(player.strength for player in relevant_players) / len(
-            relevant_players
-        )
+    def __init__(
+        self, TeamID, name, wins, losses, ties, ConferenceID, CoachID, Location
+    ):
+        self.TeamID = TeamID
+        self.name = name
+        self.wins = wins
+        self.losses = losses
+        self.ties = ties
+        self.ConferenceID = ConferenceID
+        self.CoachID = CoachID
+        self.Location = Location
+        self.players = []
+        self.OLAVG = 0
+        self.DLAVG = 0
+        self.KAVG = 0
+        self.QBAVG = 0
+        self.RBAVG = 0
+        self.WRAVG = 0
+        self.TEAVG = 0
+        self.DBAVG = 0
+        self.SAVG = 0
+        self.LBAVG = 0
+        self.DEAVG = 0
+        self.DTAVG = 0
+        self.PAVG = 0
+        self.CAVG = 0
+        self.OGAVG = 0
+        self.OTAVG = 0
+        self.OGCAVG = 0
 
 
 # Define the Game class to represent a football game between two teams.
