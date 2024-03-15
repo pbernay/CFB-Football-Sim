@@ -3,9 +3,7 @@
 import sqlite3
 
 # Database connection setup
-conn = sqlite3.connect(
-    "data/saveData/theDatabase.db"
-)  # Update the path and connector as per your database
+conn = sqlite3.connect("data/saveData/theDatabase.db")
 cursor = conn.cursor()
 
 
