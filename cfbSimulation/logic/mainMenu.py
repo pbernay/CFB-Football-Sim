@@ -71,6 +71,10 @@ def main_menu():
                 sys.exit()
 
         screen.fill(WHITE)
+        ## Potential background image
+        # background = pygame.image.load("../../assets/background.jpg")
+        # background = pygame.transform.scale(background, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        # screen.blit(background, (0, 0))
 
         draw_button(
             "Start Game",
