@@ -41,6 +41,22 @@ def draw_button(message, x, y, action=None):
         ),
     )
 
+def draw_image_button(image, x, y, action=None):
+    mouse = pygame.mouse.get_pos()
+    click = pygame.mouse.get_pressed()
+    if x + BUTTON_WIDTH > mouse[0] > x and y + BUTTON_HEIGHT > mouse[1] > y:
+        if click[0] == 1 and action != None:
+            action()
+    screen.blit(image, (x, y))
+
+def quit_game():
+    pygame.quit()
+    sys.exit()
+
+def settings():
+    print("Settings Opened!")
+    # Add logic to open settings menu
+
 
 def start_game():
     print("Game Started!")
@@ -55,6 +71,10 @@ def main_menu():
                 sys.exit()
 
         screen.fill(WHITE)
+        ## Potential background image
+        # background = pygame.image.load("../../assets/background.jpg")
+        # background = pygame.transform.scale(background, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        # screen.blit(background, (0, 0))
 
         draw_button(
             "Start Game",
@@ -62,6 +82,9 @@ def main_menu():
             SCREEN_HEIGHT / 2,
             start_game,
         )
+        draw_image_button(pygame.image.load("../../assets/exit.png"), SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2, SCREEN_HEIGHT / 2 + 200, quit_game)
+        draw_image_button(pygame.image.load("../../assets/settings.png"), SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2, SCREEN_HEIGHT / 2 + 100, settings)
+
 
         pygame.display.update()
 
