@@ -54,9 +54,28 @@ def quit_game():
     sys.exit()
 
 def settings():
-    print("Settings Opened!")
-    # Add logic to open settings menu
-
+    # Coordinates for exit button
+    x_exit = SCREEN_WIDTH / 2 - BUTTON_WIDTH / 2
+    y_exit = SCREEN_HEIGHT / 2
+    # Settings menu loop
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+        screen.fill(WHITE)
+        mouse = pygame.mouse.get_pos()
+        click = pygame.mouse.get_pressed()
+        # If exit button is clicked return out of stack to avoid overflow and repeated nested calls
+        if x_exit + BUTTON_WIDTH > mouse[0] > x_exit and y_exit + BUTTON_HEIGHT > mouse[1] > y_exit:
+            if click[0] == 1:
+                # Delay so that button is not pressed on main menu
+                pygame.time.delay(85)
+                return False
+        # Draws menu button but will never use action parameter to avoid never ending nested loops
+        draw_button("Back", x_exit, y_exit, main_menu)
+        pygame.display.update()
+        print("Settings Opened!")
 
 def start_game():
     print("Game Started!")
