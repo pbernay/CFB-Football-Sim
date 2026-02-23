@@ -73,13 +73,26 @@ This Game is in-progress and is a passion project that I like to do to further m
 python -m pip install -r requirements.txt
 ```
 
-### 2) Run a simulation
+### 2) Launch the Coach Career GUI (recommended)
+
+```bash
+python -m cfbSimulation.main --gui
+```
+
+From the GUI you can:
+- Create a coach profile (name + style).
+- Select any team in the database.
+- Play through a week-by-week season schedule.
+- Save/load your career automatically and continue later.
+- Start the next season after finishing the current one.
+
+### 3) Run a single quick simulation from CLI
 
 ```bash
 python -m cfbSimulation.main --home tID8 --away tID3 --seed 7
 ```
 
-### 3) Discover team IDs
+### 4) Discover team IDs
 
 ```bash
 python -m cfbSimulation.main --list-teams --team-limit 25

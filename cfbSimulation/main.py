@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from cfbSimulation.data.repository import DatabaseRepository
+from cfbSimulation.gui import launch_gui
 from cfbSimulation.logic.simulator import GameSimulator, format_scoreboard
 
 
@@ -23,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help="Limit for --list-teams output (default: 20)",
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the Coach Career GUI",
     )
     return parser
 
@@ -44,6 +50,10 @@ def resolve_matchup(repo: DatabaseRepository, home: str | None, away: str | None
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.gui:
+        launch_gui()
+        return
 
     repo = DatabaseRepository()
     repo.health_check()
