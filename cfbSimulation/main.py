@@ -30,6 +30,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Launch the Coach Career GUI",
     )
+    parser.add_argument(
+        "--home-strategy",
+        default="Balanced",
+        help="Strategy profile for the home team (default: Balanced)",
+    )
+    parser.add_argument(
+        "--away-strategy",
+        default="Balanced",
+        help="Strategy profile for the away team (default: Balanced)",
+    )
     return parser
 
 
@@ -65,7 +75,13 @@ def main() -> None:
     home_team_id, away_team_id = resolve_matchup(repo, args.home, args.away)
     simulator = GameSimulator(repository=repo, seed=args.seed)
 
-    result = simulator.simulate_single_game(home_team_id, away_team_id)
+    strategies = simulator.predefined_strategies()
+    result = simulator.simulate_single_game(
+        home_team_id,
+        away_team_id,
+        home_strategy=strategies.get(args.home_strategy, strategies["Balanced"]),
+        away_strategy=strategies.get(args.away_strategy, strategies["Balanced"]),
+    )
 
     print("Team Ratings:")
     print(

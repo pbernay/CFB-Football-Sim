@@ -52,3 +52,22 @@ def test_career_resets_between_seasons(tmp_path: Path):
     assert career.current_week == 1
     assert len(career.schedule) == 3
     assert career.coach_level == prior_level
+
+
+
+def test_strategy_and_starter_plan_saved(tmp_path: Path):
+    manager = CareerManager(save_path=tmp_path / "career.json", seed=21)
+    career = manager.create_new_career("Morgan", "Balanced", "tID1", weeks=3)
+
+    career = manager.set_week_strategy(career, week=1, strategy_name="Air Raid")
+    team_players = manager.repository.get_players_for_team("tID1")
+    starters = {}
+    for player in team_players:
+        if player.position in {"QB", "RB", "WR"} and player.position not in starters:
+            starters[player.position] = player.player_id
+    career = manager.set_week_starters(career, week=1, starters=starters)
+
+    loaded = manager.load()
+    assert loaded is not None
+    assert loaded.strategy_plan[1] == "Air Raid"
+    assert loaded.starter_plan[1]["QB"]

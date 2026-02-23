@@ -152,3 +152,7 @@ Notes:
 - Career mode now includes lightweight progression stats (`coach_level`, `prestige`, `morale`) and decision scenarios that apply temporary modifiers to weekly outcomes.
 - Season mode now includes a playoff bracket phase (semifinal + championship) after regular-season games complete.
 - GUI exposes a **Make Decision** action in career mode and shows playoff phase/status in season mode.
+- Added strategy planning support with predefined profiles plus per-week custom game plans in career mode; strategy choices now feed simulation scoring tendencies.
+- Added lineup/starter planning hooks and roster management UI to preview player details and set starters for tactical boosts.
+- Expanded ratings visibility with per-player impact ratings in roster view and strategy-aware simulation logs/CLI options.
+

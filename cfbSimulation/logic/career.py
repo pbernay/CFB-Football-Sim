@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from cfbSimulation.data.repository import DatabaseRepository, TeamRecord
-from cfbSimulation.logic.simulator import GameResult, GameSimulator
+from cfbSimulation.logic.simulator import GameResult, GameSimulator, StrategyProfile
 
 
 DEFAULT_SAVE_PATH = Path(__file__).resolve().parents[2] / "datafiles" / "saveData" / "career_save.json"
@@ -43,6 +43,8 @@ class CoachCareer:
     defense_modifier: int = 0
     schedule: list[ScheduledGame] = field(default_factory=list)
     decision_history: list[str] = field(default_factory=list)
+    strategy_plan: dict[int, str] = field(default_factory=dict)
+    starter_plan: dict[int, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -189,7 +191,20 @@ class CareerManager:
 
         home_id = career.team_id if next_game.is_home else next_game.opponent_team_id
         away_id = next_game.opponent_team_id if next_game.is_home else career.team_id
-        result = self.simulator.simulate_single_game(home_id, away_id)
+        strategy_name = career.strategy_plan.get(next_game.week, "Balanced")
+        strategy_map = self.simulator.predefined_strategies()
+        my_strategy = strategy_map.get(strategy_name, strategy_map["Balanced"])
+        opponent_strategy = self._counter_strategy(my_strategy)
+
+        my_starters = career.starter_plan.get(next_game.week, {})
+        result = self.simulator.simulate_single_game(
+            home_id,
+            away_id,
+            home_strategy=my_strategy if next_game.is_home else opponent_strategy,
+            away_strategy=opponent_strategy if next_game.is_home else my_strategy,
+            home_starters=my_starters if next_game.is_home else None,
+            away_starters=my_starters if not next_game.is_home else None,
+        )
 
         if next_game.is_home:
             my_score, opp_score = result.home_team.score, result.away_team.score
@@ -222,6 +237,32 @@ class CareerManager:
         career.current_week = next_game.week + 1
         self.save(career)
         return career, result, next_game
+
+
+    def _counter_strategy(self, strategy: StrategyProfile) -> StrategyProfile:
+        return StrategyProfile(
+            name=f"Counter {strategy.name}",
+            aggressiveness=max(0.2, min(0.85, 1 - strategy.aggressiveness)),
+            tempo=max(0.2, min(0.85, 1 - strategy.tempo)),
+            defensive_focus=max(0.3, min(0.9, strategy.aggressiveness + 0.2)),
+            risk_tolerance=max(0.2, min(0.85, strategy.risk_tolerance)),
+        )
+
+    def set_week_strategy(self, career: CoachCareer, week: int, strategy_name: str) -> CoachCareer:
+        if week < career.current_week or week > len(career.schedule):
+            raise ValueError("Strategy week is out of range for remaining schedule.")
+        if strategy_name not in self.simulator.predefined_strategies():
+            raise ValueError(f"Unknown strategy: {strategy_name}")
+        career.strategy_plan[week] = strategy_name
+        self.save(career)
+        return career
+
+    def set_week_starters(self, career: CoachCareer, week: int, starters: dict[str, str]) -> CoachCareer:
+        if week < career.current_week or week > len(career.schedule):
+            raise ValueError("Starter week is out of range for remaining schedule.")
+        career.starter_plan[week] = starters
+        self.save(career)
+        return career
 
     def _decision_score_swing(self, career: CoachCareer) -> int:
         morale_bonus = (career.morale - 50) // 15
@@ -281,4 +322,6 @@ class CareerManager:
             defense_modifier=data.get("defense_modifier", 0),
             schedule=schedule,
             decision_history=data.get("decision_history", []),
+            strategy_plan={int(k): v for k, v in data.get("strategy_plan", {}).items()},
+            starter_plan={int(k): v for k, v in data.get("starter_plan", {}).items()},
         )
