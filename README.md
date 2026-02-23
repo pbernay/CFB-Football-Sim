@@ -101,6 +101,12 @@ python -m cfbSimulation.main --list-teams --team-limit 25
 
 If you do not provide `--home`/`--away`, the program picks two random teams from the database.
 
+
+## Database
+
+- The project uses SQLite (`datafiles/saveData/theDatabase.db`) for local, low-overhead game data storage.
+- See `docs/database_design.md` for schema rationale, relationships, and CRUD/testing notes.
+
 ## License
 
 This project is licensed under the [MIT License] - see the [LICENSE.txt](LICENSE.txt) file for details.
