@@ -1,4 +1,4 @@
-"""Tkinter GUI for coaching career mode."""
+"""Tkinter GUI for single game, season mode, and coach career mode."""
 
 from __future__ import annotations
 
@@ -7,147 +7,338 @@ from tkinter import messagebox, ttk
 
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import CareerManager, CoachCareer
-from cfbSimulation.logic.simulator import format_scoreboard
+from cfbSimulation.logic.season import SeasonManager, SeasonState
+from cfbSimulation.logic.simulator import GameSimulator, TeamSnapshot, format_scoreboard
+
+
+class TeamSelectorPreview:
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        title: str,
+        teams: list,
+        simulator: GameSimulator,
+        on_change=None,
+    ) -> None:
+        self.simulator = simulator
+        self.on_change = on_change
+        self.team_options = {f"{team.team_id} - {team.name}": team.team_id for team in teams}
+
+        frame = ttk.LabelFrame(parent, text=title, padding=8)
+        frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6)
+        self.frame = frame
+
+        self.choice_var = tk.StringVar()
+        self.combo = ttk.Combobox(
+            frame,
+            textvariable=self.choice_var,
+            values=list(self.team_options.keys()),
+            state="readonly",
+            width=36,
+        )
+        self.combo.pack(anchor="w")
+        self.combo.bind("<<ComboboxSelected>>", self._handle_change)
+
+        self.canvas = tk.Canvas(frame, width=160, height=95, bg="#f7f7f7", highlightthickness=0)
+        self.canvas.pack(anchor="w", pady=8)
+
+        self.ratings_label = ttk.Label(frame, text="Ratings: -")
+        self.ratings_label.pack(anchor="w")
+
+        ttk.Label(frame, text="Top Players:").pack(anchor="w", pady=(6, 0))
+        self.players_list = tk.Listbox(frame, height=5, width=48)
+        self.players_list.pack(fill=tk.X, pady=(2, 0))
+
+        if self.team_options:
+            self.combo.current(0)
+            self.refresh_preview()
+
+    def _handle_change(self, _event=None) -> None:
+        self.refresh_preview()
+        if self.on_change:
+            self.on_change()
+
+    def get_selected_team_id(self) -> str | None:
+        return self.team_options.get(self.choice_var.get())
+
+    def set_team(self, team_id: str) -> None:
+        for label, tid in self.team_options.items():
+            if tid == team_id:
+                self.choice_var.set(label)
+                self.refresh_preview()
+                return
+
+    def refresh_preview(self) -> None:
+        team_id = self.get_selected_team_id()
+        if not team_id:
+            return
+
+        snapshot = self.simulator.build_team_snapshot(team_id)
+        self._draw_helmet(snapshot)
+        self.ratings_label.config(
+            text=(
+                f"OVR {snapshot.overall_rating} | OFF {snapshot.offensive_rating} | "
+                f"DEF {snapshot.defensive_rating} | ST {snapshot.special_teams_rating}"
+            )
+        )
+
+        self.players_list.delete(0, tk.END)
+        for player in snapshot.players[:5]:
+            self.players_list.insert(
+                tk.END,
+                f"{player.first_name} {player.last_name} ({player.position}) - {player.overall}",
+            )
+
+    def _draw_helmet(self, snapshot: TeamSnapshot) -> None:
+        self.canvas.delete("all")
+        color = self._color_for_team(snapshot.team_id)
+        self.canvas.create_oval(20, 15, 125, 80, fill=color, outline="#222", width=2)
+        self.canvas.create_rectangle(94, 40, 150, 60, fill="#d9d9d9", outline="#222", width=2)
+        self.canvas.create_line(96, 44, 149, 44, fill="#222", width=2)
+        self.canvas.create_line(96, 52, 149, 52, fill="#222", width=2)
+        self.canvas.create_line(96, 60, 149, 60, fill="#222", width=2)
+        initials = "".join([word[0] for word in snapshot.name.split()[:2]]).upper()
+        self.canvas.create_text(68, 47, text=initials[:3], fill="white", font=("Arial", 16, "bold"))
+
+    @staticmethod
+    def _color_for_team(team_id: str) -> str:
+        value = sum(ord(ch) for ch in team_id)
+        return f"#{(value * 123457) % 0xFFFFFF:06x}"
 
 
 class CFBGameGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("CFB Football Sim - Coach Career")
-        self.root.geometry("980x680")
+        self.root.title("CFB Football Sim")
+        self.root.geometry("1200x760")
 
         self.repository = DatabaseRepository()
-        self.career_manager = CareerManager(repository=self.repository)
+        self.simulator = GameSimulator(repository=self.repository)
+        self.career_manager = CareerManager(repository=self.repository, simulator=self.simulator)
+        self.season_manager = SeasonManager(repository=self.repository, simulator=self.simulator)
+
         self.career: CoachCareer | None = None
+        self.season_state: SeasonState | None = None
 
-        self.main_frame = ttk.Frame(self.root, padding=12)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.teams = self.repository.list_teams(limit=None)
 
-        self._build_styles()
-        self._build_start_screen()
-        self.try_load_existing_career()
+        self.main = ttk.Frame(root, padding=12)
+        self.main.pack(fill=tk.BOTH, expand=True)
 
-    def _build_styles(self) -> None:
-        style = ttk.Style()
-        style.configure("Header.TLabel", font=("Arial", 16, "bold"))
-        style.configure("Subheader.TLabel", font=("Arial", 12, "bold"))
+        ttk.Label(self.main, text="CFB Football Sim", font=("Arial", 18, "bold")).pack(anchor="w")
 
-    def _clear_main(self) -> None:
-        for widget in self.main_frame.winfo_children():
+        mode_row = ttk.Frame(self.main)
+        mode_row.pack(fill=tk.X, pady=(8, 10))
+        ttk.Label(mode_row, text="Game Mode:").pack(side=tk.LEFT)
+        self.mode_var = tk.StringVar(value="Single Game")
+        mode_picker = ttk.Combobox(
+            mode_row,
+            textvariable=self.mode_var,
+            state="readonly",
+            values=["Single Game", "Season Mode", "Career Mode"],
+            width=18,
+        )
+        mode_picker.pack(side=tk.LEFT, padx=8)
+        mode_picker.bind("<<ComboboxSelected>>", lambda _e: self.render_mode())
+
+        self.mode_container = ttk.Frame(self.main)
+        self.mode_container.pack(fill=tk.BOTH, expand=True)
+
+        self.render_mode()
+
+    def clear_mode(self) -> None:
+        for widget in self.mode_container.winfo_children():
             widget.destroy()
 
-    def _build_start_screen(self) -> None:
-        self._clear_main()
-        ttk.Label(self.main_frame, text="Create Coach Career", style="Header.TLabel").pack(anchor="w", pady=(0, 12))
+    def render_mode(self) -> None:
+        self.clear_mode()
+        mode = self.mode_var.get()
+        if mode == "Single Game":
+            self.build_single_game_mode()
+        elif mode == "Season Mode":
+            self.build_season_mode()
+        else:
+            self.build_career_mode()
 
-        form = ttk.Frame(self.main_frame)
-        form.pack(anchor="w", fill=tk.X)
+    def build_single_game_mode(self) -> None:
+        selectors = ttk.Frame(self.mode_container)
+        selectors.pack(fill=tk.X)
 
-        ttk.Label(form, text="Coach Name:").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=6)
+        self.single_home = TeamSelectorPreview(selectors, "Home Team", self.teams, self.simulator)
+        self.single_away = TeamSelectorPreview(selectors, "Away Team", self.teams, self.simulator)
+
+        actions = ttk.Frame(self.mode_container)
+        actions.pack(fill=tk.X, pady=10)
+        ttk.Button(actions, text="Simulate Single Game", command=self.play_single_game).pack(anchor="w")
+
+        self.single_output = tk.Text(self.mode_container, height=20, wrap="word")
+        self.single_output.pack(fill=tk.BOTH, expand=True)
+
+    def play_single_game(self) -> None:
+        home_id = self.single_home.get_selected_team_id()
+        away_id = self.single_away.get_selected_team_id()
+        if not home_id or not away_id:
+            messagebox.showerror("Missing Team", "Choose both home and away teams.")
+            return
+        if home_id == away_id:
+            messagebox.showerror("Invalid Matchup", "Home and away teams must be different.")
+            return
+
+        result = self.simulator.simulate_single_game(home_id, away_id)
+        lines = [format_scoreboard(result)]
+        if result.drives_log:
+            lines.extend(["", "Scoring Summary:"])
+            lines.extend([f"- {line}" for line in result.drives_log])
+        self.single_output.delete("1.0", tk.END)
+        self.single_output.insert(tk.END, "\n".join(lines))
+
+    def build_season_mode(self) -> None:
+        top = ttk.Frame(self.mode_container)
+        top.pack(fill=tk.X)
+
+        self.season_team = TeamSelectorPreview(top, "Your Team", self.teams, self.simulator)
+
+        controls = ttk.Frame(self.mode_container)
+        controls.pack(fill=tk.X, pady=10)
+        ttk.Button(controls, text="Start Season", command=self.start_season_mode).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Play Next Week", command=self.play_season_week).pack(side=tk.LEFT, padx=8)
+
+        self.season_status = ttk.Label(self.mode_container, text="Start a season to begin.", font=("Arial", 11, "bold"))
+        self.season_status.pack(anchor="w", pady=(0, 8))
+
+        content = ttk.Frame(self.mode_container)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        self.season_schedule = tk.Listbox(content, width=68)
+        self.season_schedule.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.season_log = tk.Text(content, wrap="word")
+        self.season_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+    def start_season_mode(self) -> None:
+        team_id = self.season_team.get_selected_team_id()
+        if not team_id:
+            messagebox.showerror("Missing Team", "Please choose a team.")
+            return
+
+        next_year = 1 if self.season_state is None else self.season_state.season + 1
+        self.season_state = self.season_manager.start_season(team_id=team_id, season_number=next_year)
+        self.season_log.delete("1.0", tk.END)
+        self.refresh_season_view()
+
+    def refresh_season_view(self) -> None:
+        if self.season_state is None:
+            return
+
+        next_game = self.season_manager.get_next_game(self.season_state)
+        if next_game:
+            upcoming = f"Week {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'})"
+        else:
+            upcoming = "Season complete."
+
+        self.season_status.config(
+            text=(
+                f"Season {self.season_state.season} | {self.season_state.team_name} "
+                f"Record: {self.season_state.wins}-{self.season_state.losses} | Next: {upcoming}"
+            )
+        )
+
+        self.season_schedule.delete(0, tk.END)
+        for game in self.season_state.schedule:
+            marker = game.result_summary if game.played else f"vs {game.opponent_name}"
+            site = "Home" if game.is_home else "Away"
+            self.season_schedule.insert(tk.END, f"Week {game.week:>2} | {site:<4} | {marker}")
+
+    def play_season_week(self) -> None:
+        if self.season_state is None:
+            messagebox.showinfo("No Season", "Start a season first.")
+            return
+        if self.season_manager.get_next_game(self.season_state) is None:
+            messagebox.showinfo("Season Complete", "Start a new season to continue.")
+            return
+
+        self.season_state, result, played_game = self.season_manager.play_next_game(self.season_state)
+        out = [played_game.result_summary, "", format_scoreboard(result)]
+        self.season_log.insert(tk.END, "\n".join(out) + "\n" + ("-" * 70) + "\n")
+        self.season_log.see(tk.END)
+        self.refresh_season_view()
+
+    def build_career_mode(self) -> None:
+        setup = ttk.Frame(self.mode_container)
+        setup.pack(fill=tk.X)
+
+        left = ttk.Frame(setup)
+        left.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+
+        ttk.Label(left, text="Coach Name:").pack(anchor="w")
         self.coach_name_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.coach_name_var, width=34).grid(row=0, column=1, sticky="w", pady=6)
+        ttk.Entry(left, textvariable=self.coach_name_var, width=28).pack(anchor="w", pady=(2, 8))
 
-        ttk.Label(form, text="Coach Style:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=6)
+        ttk.Label(left, text="Coach Style:").pack(anchor="w")
         self.coach_style_var = tk.StringVar(value="Balanced")
-        style_box = ttk.Combobox(
-            form,
+        ttk.Combobox(
+            left,
             textvariable=self.coach_style_var,
-            width=31,
-            state="readonly",
             values=["Balanced", "Run Heavy", "Pass Heavy", "Defensive Minded"],
-        )
-        style_box.grid(row=1, column=1, sticky="w", pady=6)
-
-        ttk.Label(form, text="Select Team:").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=6)
-        teams = self.repository.list_teams(limit=None)
-        self.team_options = {f"{team.team_id} - {team.name}": team.team_id for team in teams}
-        self.team_choice_var = tk.StringVar()
-        team_box = ttk.Combobox(
-            form,
-            textvariable=self.team_choice_var,
-            width=31,
             state="readonly",
-            values=list(self.team_options.keys()),
-        )
-        team_box.grid(row=2, column=1, sticky="w", pady=6)
-        if self.team_options:
-            team_box.current(0)
+            width=25,
+        ).pack(anchor="w", pady=(2, 8))
 
-        button_row = ttk.Frame(self.main_frame)
-        button_row.pack(anchor="w", pady=14)
-        ttk.Button(button_row, text="Start New Career", command=self.start_new_career).pack(side=tk.LEFT)
-        ttk.Button(button_row, text="Load Existing Career", command=self.load_career).pack(side=tk.LEFT, padx=8)
+        buttons = ttk.Frame(left)
+        buttons.pack(anchor="w", pady=(6, 0))
+        ttk.Button(buttons, text="Start Career", command=self.start_career_mode).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Load Career", command=self.load_career_mode).pack(side=tk.LEFT, padx=6)
+        ttk.Button(buttons, text="Play Next Week", command=self.play_career_week).pack(side=tk.LEFT, padx=6)
+        ttk.Button(buttons, text="New Season", command=self.new_career_season).pack(side=tk.LEFT, padx=6)
 
-        info = (
-            "Core loop: create a coach, play each scheduled game, and progress through the season.\n"
-            "After the schedule ends, start a new season and keep building your legacy."
-        )
-        ttk.Label(self.main_frame, text=info).pack(anchor="w", pady=(14, 0))
+        self.career_team = TeamSelectorPreview(setup, "Career Team", self.teams, self.simulator)
 
-    def try_load_existing_career(self) -> None:
+        self.career_status = ttk.Label(self.mode_container, text="Create or load a coach career.", font=("Arial", 11, "bold"))
+        self.career_status.pack(anchor="w", pady=(10, 8))
+
+        content = ttk.Frame(self.mode_container)
+        content.pack(fill=tk.BOTH, expand=True)
+        self.career_schedule = tk.Listbox(content, width=68)
+        self.career_schedule.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.career_log = tk.Text(content, wrap="word")
+        self.career_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
         loaded = self.career_manager.load()
         if loaded:
             self.career = loaded
-            self._build_career_screen()
+            self.career_team.set_team(loaded.team_id)
+            self.coach_name_var.set(loaded.coach_name)
+            self.coach_style_var.set(loaded.coach_style)
+            self.refresh_career_view()
 
-    def start_new_career(self) -> None:
-        coach_name = self.coach_name_var.get()
-        coach_style = self.coach_style_var.get()
-        team_label = self.team_choice_var.get()
-        team_id = self.team_options.get(team_label)
-
+    def start_career_mode(self) -> None:
+        team_id = self.career_team.get_selected_team_id()
         if not team_id:
             messagebox.showerror("Missing Team", "Please choose a team.")
             return
 
         try:
-            self.career = self.career_manager.create_new_career(coach_name, coach_style, team_id)
+            self.career = self.career_manager.create_new_career(
+                coach_name=self.coach_name_var.get(),
+                coach_style=self.coach_style_var.get(),
+                team_id=team_id,
+            )
         except ValueError as error:
-            messagebox.showerror("Invalid Career Setup", str(error))
+            messagebox.showerror("Invalid Career", str(error))
             return
 
-        self._build_career_screen()
+        self.career_log.delete("1.0", tk.END)
+        self.refresh_career_view()
 
-    def load_career(self) -> None:
+    def load_career_mode(self) -> None:
         loaded = self.career_manager.load()
         if not loaded:
-            messagebox.showinfo("No Save Found", "No career save found. Create a new one first.")
+            messagebox.showinfo("No Save", "No existing career save found.")
             return
         self.career = loaded
-        self._build_career_screen()
-
-    def _build_career_screen(self) -> None:
-        if self.career is None:
-            return
-
-        self._clear_main()
-
-        header_text = (
-            f"Coach {self.career.coach_name} ({self.career.coach_style}) - "
-            f"{self.career.team_name} | Season {self.career.season}"
-        )
-        ttk.Label(self.main_frame, text=header_text, style="Header.TLabel").pack(anchor="w", pady=(0, 10))
-
-        self.status_label = ttk.Label(self.main_frame, style="Subheader.TLabel")
-        self.status_label.pack(anchor="w", pady=(0, 8))
-
-        controls = ttk.Frame(self.main_frame)
-        controls.pack(anchor="w", fill=tk.X, pady=(0, 10))
-        ttk.Button(controls, text="Play Next Game", command=self.play_next_game).pack(side=tk.LEFT)
-        ttk.Button(controls, text="Start New Season", command=self.start_new_season).pack(side=tk.LEFT, padx=8)
-        ttk.Button(controls, text="Back to Setup", command=self._build_start_screen).pack(side=tk.LEFT)
-
-        schedule_frame = ttk.LabelFrame(self.main_frame, text="Schedule")
-        schedule_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 8))
-
-        self.schedule_list = tk.Listbox(schedule_frame, height=12)
-        self.schedule_list.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-
-        log_frame = ttk.LabelFrame(self.main_frame, text="Game Output")
-        log_frame.pack(fill=tk.BOTH, expand=True)
-        self.log_text = tk.Text(log_frame, height=14, wrap="word")
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-
+        self.career_team.set_team(loaded.team_id)
+        self.coach_name_var.set(loaded.coach_name)
+        self.coach_style_var.set(loaded.coach_style)
         self.refresh_career_view()
 
     def refresh_career_view(self) -> None:
@@ -156,53 +347,50 @@ class CFBGameGUI:
 
         next_game = self.career_manager.get_next_game(self.career)
         if next_game:
-            next_line = (
-                f"Next: Week {next_game.week} vs {next_game.opponent_name} "
-                f"({'Home' if next_game.is_home else 'Away'})"
-            )
+            upcoming = f"Week {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'})"
         else:
-            next_line = "Season complete. Start a new season to continue."
+            upcoming = "Season complete."
 
-        self.status_label.config(text=f"Record: {self.career.wins}-{self.career.losses} | {next_line}")
+        self.career_status.config(
+            text=(
+                f"Coach {self.career.coach_name} ({self.career.coach_style}) | "
+                f"{self.career.team_name} | Season {self.career.season} | "
+                f"Record {self.career.wins}-{self.career.losses} | Next: {upcoming}"
+            )
+        )
 
-        self.schedule_list.delete(0, tk.END)
+        self.career_schedule.delete(0, tk.END)
         for game in self.career.schedule:
-            location = "Home" if game.is_home else "Away"
-            if game.played:
-                text = f"Week {game.week:>2} | {location:<4} | {game.result_summary}"
-            else:
-                text = f"Week {game.week:>2} | {location:<4} | vs {game.opponent_name}"
-            self.schedule_list.insert(tk.END, text)
+            marker = game.result_summary if game.played else f"vs {game.opponent_name}"
+            site = "Home" if game.is_home else "Away"
+            self.career_schedule.insert(tk.END, f"Week {game.week:>2} | {site:<4} | {marker}")
 
-    def play_next_game(self) -> None:
+    def play_career_week(self) -> None:
         if self.career is None:
+            messagebox.showinfo("No Career", "Create or load a career first.")
             return
         if self.career_manager.get_next_game(self.career) is None:
-            messagebox.showinfo("Season Finished", "No games left this season. Start a new season.")
+            messagebox.showinfo("Season Complete", "Start a new season.")
             return
 
         self.career, result, played_game = self.career_manager.play_next_game(self.career)
-
-        output = [played_game.result_summary, "", format_scoreboard(result)]
-        if result.drives_log:
-            output.extend(["", "Scoring Drives:"])
-            output.extend(result.drives_log)
-
-        self.log_text.insert(tk.END, "\n".join(output) + "\n" + ("-" * 70) + "\n")
-        self.log_text.see(tk.END)
+        lines = [played_game.result_summary, "", format_scoreboard(result)]
+        self.career_log.insert(tk.END, "\n".join(lines) + "\n" + ("-" * 70) + "\n")
+        self.career_log.see(tk.END)
         self.refresh_career_view()
 
-    def start_new_season(self) -> None:
+    def new_career_season(self) -> None:
         if self.career is None:
+            messagebox.showinfo("No Career", "Create or load a career first.")
             return
         self.career = self.career_manager.reset_for_new_season(self.career)
-        self.log_text.insert(tk.END, f"Started Season {self.career.season}.\n{'-' * 70}\n")
+        self.career_log.insert(tk.END, f"Started Season {self.career.season}.\n{'-' * 70}\n")
         self.refresh_career_view()
 
 
 def launch_gui() -> None:
     root = tk.Tk()
-    app = CFBGameGUI(root)
+    CFBGameGUI(root)
     root.mainloop()
 
 
