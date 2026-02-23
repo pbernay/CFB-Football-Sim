@@ -169,3 +169,4 @@ Notes:
 - Career decisions are now triggered randomly during week progression and include new player-development outcomes that can boost recruiting leverage and roster potential growth.
 - Career team ratings panel now refreshes from the evolving career roster so OVR/OFF/DEF/ST reflect progression changes in-season.
 - Added automatic best-player starter selection for career weeks, expanded lineup coverage to all major positions (QB/RB/WR/TE/OL/DL/LB/DB/K/P), and use auto-starters when no manual plan is saved.
+- Added career-mode coaching staff management (coordinators, position coaches, and head scout) with offseason hiring pool, role swaps, coach-influenced auto-starters/development, and scout-quality effects on scouting accuracy/point regeneration.

@@ -92,3 +92,35 @@ def test_decision_can_increase_recruiting_modifier(tmp_path: Path):
     manager.apply_decision(career, recruiting.key, host.key)
 
     assert career.recruiting_modifier > 0
+
+
+def test_staff_auto_starters_reflect_coordinator_quality(tmp_path: Path):
+    manager = CareerManager(save_path=tmp_path / "career.json", seed=3)
+    career = manager.create_new_career("Staff", "Balanced", "tID1", weeks=1)
+
+    career.coaching_staff["Offensive Coordinator"]["overall"] = 95
+    strong = manager.auto_set_best_starters(career)
+
+    career.coaching_staff["Offensive Coordinator"]["overall"] = 40
+    weak = manager.auto_set_best_starters(career)
+
+    roster = {str(p.get("player_id")): int(p.get("overall", 0)) for p in career.roster if str(p.get("position")) == "QB"}
+    assert roster[strong["QB"]] >= roster[weak["QB"]]
+
+
+def test_head_scout_restricts_promotion_and_regens_points(tmp_path: Path):
+    manager = CareerManager(save_path=tmp_path / "career.json", seed=6)
+    career = manager.create_new_career("Scout", "Balanced", "tID1", weeks=1)
+
+    try:
+        manager.promote_staff_member(career, "Head Scout", "QB Coach")
+        assert False, "Expected ValueError when promoting Head Scout"
+    except ValueError:
+        pass
+
+    career.coaching_staff["Head Scout"]["overall"] = 90
+    regen_high = manager.scouting_points_regen(career)
+    career.coaching_staff["Head Scout"]["overall"] = 50
+    regen_low = manager.scouting_points_regen(career)
+
+    assert regen_high > regen_low
