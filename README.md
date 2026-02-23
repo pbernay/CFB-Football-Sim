@@ -67,7 +67,25 @@ This Game is in-progress and is a passion project that I like to do to further m
 
 ## Getting Started
 
-In-Progress(Include how to install, use, and configure the game)
+### 1) Install dependencies
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 2) Run a simulation
+
+```bash
+python -m cfbSimulation.main --home tID8 --away tID3 --seed 7
+```
+
+### 3) Discover team IDs
+
+```bash
+python -m cfbSimulation.main --list-teams --team-limit 25
+```
+
+If you do not provide `--home`/`--away`, the program picks two random teams from the database.
 
 ## License
 
