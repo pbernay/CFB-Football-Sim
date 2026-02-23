@@ -163,4 +163,4 @@ Notes:
 - Added career-mode scouting and recruiting workflows: coaches can spend scouting points to discover randomized recruits (with inferred potential notes), then submit NIL-style offers that can be accepted/rejected based on team reputation, offer level, and recruit aspirations.
 - Added career roster dynamics with weekly progression/regression and offseason churn (graduation/draft departures, offseason rating changes, and signed recruits joining next season) plus offseason summary logging in the GUI.
 - Expanded database repository capabilities with explicit Teams/Players schema initialization, full CRUD support, and dedicated CRUD/performance tests plus design notes in `docs/database_design.md`.
-
+- Career mode UI now keeps the console at the top of the career panel, persists scouting tables between openings, supports sending offers directly from scouting, and tracks recruiting budget/progress feedback based on prior-season record.

@@ -50,6 +50,10 @@ class CoachCareer:
     ai_difficulty: str = "Normal"
     ai_adaptation: dict[str, int] = field(default_factory=dict)
     scouting_points: int = 100
+    recruiting_budget: int = 1800
+    recruiting_budget_remaining: int = 1800
+    last_season_wins: int = 0
+    last_season_losses: int = 0
     scouting_reports: list[dict[str, str | int]] = field(default_factory=list)
     recruiting_board: dict[str, dict[str, str | int]] = field(default_factory=dict)
     signed_recruits: list[dict[str, str | int]] = field(default_factory=list)
@@ -213,6 +217,15 @@ class CareerManager:
             for p in players
         ]
 
+    @staticmethod
+    def calculate_recruiting_budget(last_wins: int, last_losses: int) -> int:
+        weighted_total = 1800 + (last_wins * 180) - (last_losses * 60)
+        return max(1200, min(5000, weighted_total))
+
+    @staticmethod
+    def recruiting_progress_from_score(score: float) -> int:
+        return max(0, min(100, int(round((score / 16.0) * 100))))
+
     def invest_in_scouting(self, career: CoachCareer, investment: int) -> CoachCareer:
         spend = max(0, min(career.scouting_points, investment))
         if spend <= 0:
@@ -232,9 +245,19 @@ class CareerManager:
         recruit = career.recruiting_board.get(recruit_id)
         if recruit is None:
             raise ValueError("Recruit not found on your board.")
+        if salary_offer > career.recruiting_budget_remaining:
+            raise ValueError(
+                f"Offer exceeds remaining recruiting budget ({career.recruiting_budget_remaining})."
+            )
         reputation = min(95.0, 50.0 + career.prestige * 1.5 + career.wins * 0.9)
         role_score = 6.0 if str(recruit.get("position")) in {"QB", "RB", "WR", "CB", "LB"} else 3.0
         result = self.roster_manager.evaluate_offer(recruit, salary_offer, reputation, role_score)
+        progress = self.recruiting_progress_from_score(result.score)
+        recruit["last_offer"] = salary_offer
+        recruit["last_offer_score"] = result.score
+        recruit["last_offer_progress"] = progress
+        recruit["target_score"] = 16.0
+        career.recruiting_budget_remaining = max(0, career.recruiting_budget_remaining - salary_offer)
         if result.accepted:
             recruit["player_id"] = recruit["recruit_id"]
             recruit["first_name"], recruit["last_name"] = str(recruit["name"]).split(" ", 1)
@@ -244,7 +267,8 @@ class CareerManager:
             career.signed_recruits.append(dict(recruit))
             career.recruiting_board.pop(recruit_id, None)
         self.save(career)
-        msg = f"{result.reason} (score {result.score})"
+        gap = round(16.0 - result.score, 2)
+        msg = f"{result.reason} (score {result.score}, progress {progress}%, gap {gap:+})"
         return career, result.accepted, msg
 
     def _generate_schedule(self, team_id: str, weeks: int = 12) -> list[ScheduledGame]:
@@ -394,6 +418,8 @@ class CareerManager:
         return None
 
     def reset_for_new_season(self, career: CoachCareer, weeks: int = 12) -> CoachCareer:
+        career.last_season_wins = career.wins
+        career.last_season_losses = career.losses
         updated_roster, summary = self.roster_manager.run_offseason(career.roster)
         if career.signed_recruits:
             for recruit in career.signed_recruits:
@@ -407,6 +433,8 @@ class CareerManager:
         career.schedule = self._generate_schedule(career.team_id, weeks=weeks)
         career.current_week = 1
         career.season += 1
+        career.recruiting_budget = self.calculate_recruiting_budget(career.last_season_wins, career.last_season_losses)
+        career.recruiting_budget_remaining = career.recruiting_budget
         career.wins = 0
         career.losses = 0
         self.save(career)
@@ -447,6 +475,10 @@ class CareerManager:
             ai_difficulty=data.get("ai_difficulty", "Normal"),
             ai_adaptation={k: int(v) for k, v in data.get("ai_adaptation", {}).items()},
             scouting_points=int(data.get("scouting_points", 100)),
+            recruiting_budget=int(data.get("recruiting_budget", 1800)),
+            recruiting_budget_remaining=int(data.get("recruiting_budget_remaining", data.get("recruiting_budget", 1800))),
+            last_season_wins=int(data.get("last_season_wins", 0)),
+            last_season_losses=int(data.get("last_season_losses", 0)),
             scouting_reports=data.get("scouting_reports", []),
             recruiting_board=data.get("recruiting_board", {}),
             signed_recruits=data.get("signed_recruits", []),
