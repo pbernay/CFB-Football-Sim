@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from cfbSimulation.data.repository import DatabaseRepository
+from cfbSimulation.logic.player_stats import PlayerStatsManager
 from cfbSimulation.logic.simulator import GameSimulator, format_scoreboard
 
 
@@ -39,6 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="Balanced",
         help="Strategy profile for the away team (default: Balanced)",
     )
+    parser.add_argument(
+        "--player-stats",
+        action="store_true",
+        help="Show top saved player season stats and exit",
+    )
+    parser.add_argument(
+        "--compare-players",
+        help="Comma-separated player IDs to compare from saved stats",
+    )
     return parser
 
 
@@ -48,6 +58,34 @@ def print_teams(repo: DatabaseRepository, limit: int) -> None:
     for team in teams:
         print(f" - {team.team_id:<6} {team.name} ({team.location})")
 
+
+
+
+def print_player_stats(stats_manager: PlayerStatsManager, compare_players: str | None) -> None:
+    if compare_players:
+        ids = [pid.strip() for pid in compare_players.split(",") if pid.strip()]
+        compared = stats_manager.compare_players(ids)
+        if not compared:
+            print("No matching players found in saved stats.")
+            return
+        print("Player comparison:")
+        for stat in compared:
+            tds = stat.pass_tds + stat.rush_tds + stat.receiving_tds
+            total_yards = stat.pass_yards + stat.rush_yards + stat.receiving_yards
+            print(f" - {stat.player_name} ({stat.player_id}, {stat.team_id}/{stat.position}): {total_yards} yds, {tds} TD, {stat.tackles} tackles")
+        return
+
+    leaders = stats_manager.top_players(limit=20)
+    if not leaders:
+        print("No saved player stats yet. Simulate games in season/career to populate stats.")
+        return
+    print("Top player stats:")
+    for stat in leaders:
+        tds = stat.pass_tds + stat.rush_tds + stat.receiving_tds
+        print(
+            f" - {stat.player_name:<22} {stat.team_id:<5} {stat.position:<3} "
+            f"GP {stat.games_played:<2} Pass {stat.pass_yards:<4} Rush {stat.rush_yards:<4} Rec {stat.receiving_yards:<4} TD {tds:<2}"
+        )
 
 def resolve_matchup(repo: DatabaseRepository, home: str | None, away: str | None) -> tuple[str, str]:
     if home and away:
@@ -73,7 +111,12 @@ def main() -> None:
         print_teams(repo, args.team_limit)
         return
 
+    if args.player_stats or args.compare_players:
+        print_player_stats(PlayerStatsManager(repository=repo), args.compare_players)
+        return
+
     home_team_id, away_team_id = resolve_matchup(repo, args.home, args.away)
+    stats_manager = PlayerStatsManager(repository=repo, seed=args.seed)
     simulator = GameSimulator(repository=repo, seed=args.seed)
 
     strategies = simulator.predefined_strategies()
@@ -102,6 +145,8 @@ def main() -> None:
         print("Scoring Summary:")
         for line in result.drives_log:
             print(f" * {line}")
+
+    stats_manager.record_game(result.home_team, result.away_team)
 
 
 if __name__ == "__main__":

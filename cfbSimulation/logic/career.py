@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from cfbSimulation.data.repository import DatabaseRepository, TeamRecord
+from cfbSimulation.logic.player_stats import PlayerStatsManager
 from cfbSimulation.logic.simulator import GameResult, GameSimulator, StrategyProfile
 
 
@@ -45,6 +46,8 @@ class CoachCareer:
     decision_history: list[str] = field(default_factory=list)
     strategy_plan: dict[int, str] = field(default_factory=dict)
     starter_plan: dict[int, dict[str, str]] = field(default_factory=dict)
+    ai_difficulty: str = "Normal"
+    ai_adaptation: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -70,12 +73,14 @@ class CareerManager:
         self,
         repository: DatabaseRepository | None = None,
         simulator: GameSimulator | None = None,
+        stats_manager: PlayerStatsManager | None = None,
         save_path: Path | str = DEFAULT_SAVE_PATH,
         seed: int | None = None,
     ) -> None:
         self.repository = repository or DatabaseRepository()
         self.simulator = simulator or GameSimulator(repository=self.repository, seed=seed)
         self.save_path = Path(save_path)
+        self.stats_manager = stats_manager or PlayerStatsManager(repository=self.repository, seed=seed)
         self.random = random.Random(seed)
         self._decision_scenarios = self._build_decision_scenarios()
 
@@ -117,6 +122,14 @@ class CareerManager:
     def list_decision_scenarios(self) -> tuple[DecisionScenario, ...]:
         return self._decision_scenarios
 
+    @staticmethod
+    def ai_difficulty_profiles() -> dict[str, dict[str, float]]:
+        return {
+            "Easy": {"rating_bonus": -4.0, "adaptation_rate": 0.65},
+            "Normal": {"rating_bonus": 0.0, "adaptation_rate": 1.0},
+            "Hard": {"rating_bonus": 3.0, "adaptation_rate": 1.35},
+            "Heisman": {"rating_bonus": 6.0, "adaptation_rate": 1.65},
+        }
 
     def get_weekly_scenario(self, career: CoachCareer) -> DecisionScenario:
         scenarios = self.list_decision_scenarios()
@@ -142,11 +155,20 @@ class CareerManager:
         self.save(career)
         return career
 
-    def create_new_career(self, coach_name: str, coach_style: str, team_id: str, weeks: int = 12) -> CoachCareer:
+    def create_new_career(
+        self,
+        coach_name: str,
+        coach_style: str,
+        team_id: str,
+        weeks: int = 12,
+        ai_difficulty: str = "Normal",
+    ) -> CoachCareer:
         if not coach_name.strip():
             raise ValueError("Coach name cannot be empty.")
 
         team: TeamRecord | None = self.repository.get_team(team_id)
+        if ai_difficulty not in self.ai_difficulty_profiles():
+            raise ValueError(f"Unknown AI difficulty: {ai_difficulty}")
         if team is None:
             raise ValueError(f"Unknown team ID: {team_id}")
 
@@ -157,6 +179,7 @@ class CareerManager:
             team_id=team.team_id,
             team_name=team.name,
             schedule=schedule,
+            ai_difficulty=ai_difficulty,
         )
         self.save(career)
         return career
@@ -194,7 +217,9 @@ class CareerManager:
         strategy_name = career.strategy_plan.get(next_game.week, "Balanced")
         strategy_map = self.simulator.predefined_strategies()
         my_strategy = strategy_map.get(strategy_name, strategy_map["Balanced"])
-        opponent_strategy = self._counter_strategy(my_strategy)
+        opponent_strategy = self._counter_strategy(my_strategy, career)
+        difficulty = self.ai_difficulty_profiles().get(career.ai_difficulty, self.ai_difficulty_profiles()["Normal"])
+        opp_rating_bonus = difficulty["rating_bonus"]
 
         my_starters = career.starter_plan.get(next_game.week, {})
         result = self.simulator.simulate_single_game(
@@ -204,6 +229,8 @@ class CareerManager:
             away_strategy=opponent_strategy if next_game.is_home else my_strategy,
             home_starters=my_starters if next_game.is_home else None,
             away_starters=my_starters if not next_game.is_home else None,
+            home_rating_adjustment=0.0 if next_game.is_home else opp_rating_bonus,
+            away_rating_adjustment=opp_rating_bonus if next_game.is_home else 0.0,
         )
 
         if next_game.is_home:
@@ -235,18 +262,33 @@ class CareerManager:
         career.morale = max(20, min(100, career.morale + (1 if outcome == "W" else -1)))
 
         career.current_week = next_game.week + 1
+        self._update_ai_memory(career, my_strategy)
+        self.stats_manager.record_game(result.home_team, result.away_team)
         self.save(career)
         return career, result, next_game
 
 
-    def _counter_strategy(self, strategy: StrategyProfile) -> StrategyProfile:
+    def _counter_strategy(self, strategy: StrategyProfile, career: CoachCareer) -> StrategyProfile:
+        adaptation = career.ai_adaptation.get(strategy.name, 0)
+        difficulty = self.ai_difficulty_profiles().get(career.ai_difficulty, self.ai_difficulty_profiles()["Normal"])
+        adaptation_factor = min(0.22, adaptation * 0.02 * difficulty["adaptation_rate"])
         return StrategyProfile(
-            name=f"Counter {strategy.name}",
-            aggressiveness=max(0.2, min(0.85, 1 - strategy.aggressiveness)),
-            tempo=max(0.2, min(0.85, 1 - strategy.tempo)),
-            defensive_focus=max(0.3, min(0.9, strategy.aggressiveness + 0.2)),
-            risk_tolerance=max(0.2, min(0.85, strategy.risk_tolerance)),
+            name=f"Counter {strategy.name} ({career.ai_difficulty})",
+            aggressiveness=max(0.2, min(0.9, 1 - strategy.aggressiveness + adaptation_factor)),
+            tempo=max(0.2, min(0.9, 1 - strategy.tempo + adaptation_factor)),
+            defensive_focus=max(0.3, min(0.95, strategy.aggressiveness + 0.2 + adaptation_factor)),
+            risk_tolerance=max(0.2, min(0.85, strategy.risk_tolerance + adaptation_factor / 2)),
         )
+
+    def _update_ai_memory(self, career: CoachCareer, user_strategy: StrategyProfile) -> None:
+        history = dict(career.ai_adaptation)
+        history[user_strategy.name] = history.get(user_strategy.name, 0) + 1
+        for key in list(history):
+            if key != user_strategy.name:
+                history[key] = max(0, history[key] - 1)
+                if history[key] == 0:
+                    history.pop(key)
+        career.ai_adaptation = history
 
     def set_week_strategy(self, career: CoachCareer, week: int, strategy_name: str) -> CoachCareer:
         if week < career.current_week or week > len(career.schedule):
@@ -324,4 +366,6 @@ class CareerManager:
             decision_history=data.get("decision_history", []),
             strategy_plan={int(k): v for k, v in data.get("strategy_plan", {}).items()},
             starter_plan={int(k): v for k, v in data.get("starter_plan", {}).items()},
+            ai_difficulty=data.get("ai_difficulty", "Normal"),
+            ai_adaptation={k: int(v) for k, v in data.get("ai_adaptation", {}).items()},
         )

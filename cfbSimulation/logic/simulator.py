@@ -125,9 +125,14 @@ class GameSimulator:
         away_strategy: StrategyProfile | None = None,
         home_starters: dict[str, str] | None = None,
         away_starters: dict[str, str] | None = None,
+        home_rating_adjustment: float = 0.0,
+        away_rating_adjustment: float = 0.0,
     ) -> GameResult:
         home = self.build_team_snapshot(home_team_id, strategy=home_strategy, starters=home_starters)
         away = self.build_team_snapshot(away_team_id, strategy=away_strategy, starters=away_starters)
+
+        self._apply_rating_adjustment(home, home_rating_adjustment)
+        self._apply_rating_adjustment(away, away_rating_adjustment)
         drives_log: list[str] = []
 
         offense, defense = home, away
@@ -149,6 +154,14 @@ class GameSimulator:
                     break
 
         return GameResult(home_team=home, away_team=away, drives_log=drives_log)
+
+    @staticmethod
+    def _apply_rating_adjustment(team: TeamSnapshot, adjustment: float) -> None:
+        if adjustment == 0:
+            return
+        team.offensive_rating = round(max(40.0, min(99.0, team.offensive_rating + adjustment)), 2)
+        team.defensive_rating = round(max(40.0, min(99.0, team.defensive_rating + adjustment)), 2)
+        team.overall_rating = round((team.offensive_rating + team.defensive_rating + team.special_teams_rating) / 3, 2)
 
     def _simulate_drive(self, offense: TeamSnapshot, defense: TeamSnapshot) -> int:
         attack_edge = offense.offensive_rating / max(offense.offensive_rating + defense.defensive_rating, 1)
