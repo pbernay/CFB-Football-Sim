@@ -73,13 +73,26 @@ This Game is in-progress and is a passion project that I like to do to further m
 python -m pip install -r requirements.txt
 ```
 
-### 2) Run a simulation
+### 2) Launch the Coach Career GUI (recommended)
+
+```bash
+python -m cfbSimulation.main --gui
+```
+
+From the GUI you can:
+- Choose from **Single Game**, **Season Mode**, and **Career Mode** using the game mode selector.
+- See a football helmet preview, team ratings (OVR/OFF/DEF/ST), and top players while selecting teams.
+- Play one-off matchups in Single Game mode.
+- Run a full week-by-week season in Season Mode.
+- Create/load a coach and play persistent week-by-week careers in Career Mode.
+
+### 3) Run a single quick simulation from CLI
 
 ```bash
 python -m cfbSimulation.main --home tID8 --away tID3 --seed 7
 ```
 
-### 3) Discover team IDs
+### 4) Discover team IDs
 
 ```bash
 python -m cfbSimulation.main --list-teams --team-limit 25
