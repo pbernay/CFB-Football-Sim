@@ -8,6 +8,7 @@ from enum import Enum
 
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import ScheduledGame
+from cfbSimulation.logic.player_stats import PlayerStatsManager
 from cfbSimulation.logic.simulator import GameResult, GameSimulator
 
 
@@ -39,10 +40,12 @@ class SeasonManager:
         self,
         repository: DatabaseRepository | None = None,
         simulator: GameSimulator | None = None,
+        stats_manager: PlayerStatsManager | None = None,
         seed: int | None = None,
     ) -> None:
         self.repository = repository or DatabaseRepository()
         self.simulator = simulator or GameSimulator(repository=self.repository, seed=seed)
+        self.stats_manager = stats_manager or PlayerStatsManager(repository=self.repository, seed=seed)
         self.random = random.Random(seed)
 
     def start_season(self, team_id: str, weeks: int = 12, season_number: int = 1) -> SeasonState:
@@ -106,6 +109,8 @@ class SeasonManager:
             my_score, opp_score = result.home_team.score, result.away_team.score
         else:
             my_score, opp_score = result.away_team.score, result.home_team.score
+
+        self.stats_manager.record_game(result.home_team, result.away_team)
 
         next_game.played = True
         next_game.my_score = my_score

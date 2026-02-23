@@ -156,3 +156,7 @@ Notes:
 - Added lineup/starter planning hooks and roster management UI to preview player details and set starters for tactical boosts.
 - Expanded ratings visibility with per-player impact ratings in roster view and strategy-aware simulation logs/CLI options.
 - Replaced the Tkinter GUI with a PySide6-based interface featuring a dedicated Main Menu dashboard, persistent sidebar navigation, and mode-specific pages for Single Game, Season, and Career workflows.
+- Added adaptive AI difficulty levels (`Easy`, `Normal`, `Hard`, `Heisman`) in career mode that influence opponent ratings and counter-strategy behavior.
+- Added AI strategy memory in career mode so CPU teams adapt when the user repeatedly uses the same game plan.
+- Added persistent player season statistics tracking (`player_stats.json`) and integrated automatic stat updates after simulated games.
+- Added player stats viewing/comparison tools in both GUI (Career page "Player Stats") and CLI (`--player-stats`, `--compare-players`).

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QInputDialog,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
 
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import CareerManager, CoachCareer, DecisionScenario
+from cfbSimulation.logic.player_stats import PlayerStatsManager
 from cfbSimulation.logic.season import SeasonManager, SeasonPhase, SeasonState
 from cfbSimulation.logic.simulator import GameSimulator, TeamSnapshot, format_scoreboard
 
@@ -130,8 +132,9 @@ class CFBGameGUI(QMainWindow):
 
         self.repository = DatabaseRepository()
         self.simulator = GameSimulator(repository=self.repository)
-        self.career_manager = CareerManager(repository=self.repository, simulator=self.simulator)
-        self.season_manager = SeasonManager(repository=self.repository, simulator=self.simulator)
+        self.stats_manager = PlayerStatsManager(repository=self.repository)
+        self.career_manager = CareerManager(repository=self.repository, simulator=self.simulator, stats_manager=self.stats_manager)
+        self.season_manager = SeasonManager(repository=self.repository, simulator=self.simulator, stats_manager=self.stats_manager)
 
         self.career: CoachCareer | None = None
         self.season_state: SeasonState | None = None
@@ -456,6 +459,11 @@ class CFBGameGUI(QMainWindow):
         self.coach_style_combo.addItems(["Balanced", "Run Heavy", "Pass Heavy", "Defensive Minded"])
         left.addWidget(self.coach_style_combo)
 
+        left.addWidget(QLabel("AI Difficulty:"))
+        self.ai_difficulty_combo = QComboBox()
+        self.ai_difficulty_combo.addItems(list(self.career_manager.ai_difficulty_profiles().keys()))
+        left.addWidget(self.ai_difficulty_combo)
+
         actions = QHBoxLayout()
         for label, handler in [
             ("Start Career", self.start_career_mode),
@@ -463,6 +471,7 @@ class CFBGameGUI(QMainWindow):
             ("Play Next Week", self.play_career_week),
             ("Set Game Plan", self.open_strategy_dialog),
             ("Roster", self.open_roster_manager),
+            ("Player Stats", self.open_player_stats_dialog),
             ("Make Decision", self.make_career_decision),
             ("New Season", self.new_career_season),
         ]:
@@ -500,6 +509,7 @@ class CFBGameGUI(QMainWindow):
                 coach_name=self.coach_name_input.text().strip(),
                 coach_style=self.coach_style_combo.currentText(),
                 team_id=team_id,
+                ai_difficulty=self.ai_difficulty_combo.currentText(),
             )
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid Career", str(exc))
@@ -531,7 +541,7 @@ class CFBGameGUI(QMainWindow):
             f"Coach {self.career.coach_name} ({self.career.coach_style}) | "
             f"Lvl {self.career.coach_level} Prestige {self.career.prestige} Morale {self.career.morale} | "
             f"{self.career.team_name} | Season {self.career.season} | "
-            f"Record {self.career.wins}-{self.career.losses} | Next: {upcoming}"
+            f"AI {self.career.ai_difficulty} | Record {self.career.wins}-{self.career.losses} | Next: {upcoming}"
         )
         self.career_schedule.clear()
         for game in self.career.schedule:
@@ -651,6 +661,67 @@ class CFBGameGUI(QMainWindow):
             for col, value in enumerate(values):
                 table.setItem(row, col, QTableWidgetItem(value))
         layout.addWidget(table)
+        dialog.exec()
+
+    def open_player_stats_dialog(self) -> None:
+        top = self.stats_manager.top_players(limit=40)
+        if not top:
+            QMessageBox.information(self, "No Stats", "Player stats will appear after game simulations.")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Player Season Stats")
+        dialog.resize(980, 580)
+        layout = QVBoxLayout(dialog)
+
+        controls = QHBoxLayout()
+        compare_btn = QPushButton("Compare Players")
+        controls.addWidget(compare_btn)
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        table = QTableWidget(len(top), 10)
+        table.setHorizontalHeaderLabels(["Player", "Team", "Pos", "GP", "PassYds", "RushYds", "RecYds", "TDs", "Tackles", "INT"])
+        for row, stat in enumerate(top):
+            tds = stat.pass_tds + stat.rush_tds + stat.receiving_tds
+            values = [
+                stat.player_name,
+                stat.team_id,
+                stat.position,
+                str(stat.games_played),
+                str(stat.pass_yards),
+                str(stat.rush_yards),
+                str(stat.receiving_yards),
+                str(tds),
+                str(stat.tackles),
+                str(stat.interceptions),
+            ]
+            for col, value in enumerate(values):
+                table.setItem(row, col, QTableWidgetItem(value))
+        layout.addWidget(table)
+
+        compare_output = QTextEdit()
+        compare_output.setReadOnly(True)
+        compare_output.setMaximumHeight(130)
+        layout.addWidget(compare_output)
+
+        def compare_players() -> None:
+            text, ok = QInputDialog.getText(dialog, "Compare", "Enter Player IDs (comma-separated):")
+            if not ok or not text.strip():
+                return
+            ids = [item.strip() for item in text.split(",") if item.strip()]
+            compared = self.stats_manager.compare_players(ids)
+            if not compared:
+                compare_output.setPlainText("No matching players found in saved stats yet.")
+                return
+            lines = ["Comparison:"]
+            for stat in compared:
+                total_tds = stat.pass_tds + stat.rush_tds + stat.receiving_tds
+                total_yards = stat.pass_yards + stat.rush_yards + stat.receiving_yards
+                lines.append(f"- {stat.player_name} ({stat.team_id}/{stat.position}): {total_yards} yds, {total_tds} TD, {stat.tackles} tackles")
+            compare_output.setPlainText("\n".join(lines))
+
+        compare_btn.clicked.connect(compare_players)
         dialog.exec()
 
     def make_career_decision(self) -> None:
