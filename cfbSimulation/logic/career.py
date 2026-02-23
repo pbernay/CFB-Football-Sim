@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cfbSimulation.data.repository import DatabaseRepository, TeamRecord
 from cfbSimulation.logic.player_stats import PlayerStatsManager
+from cfbSimulation.logic.roster_dynamics import RosterDynamicsManager
 from cfbSimulation.logic.simulator import GameResult, GameSimulator, StrategyProfile
 
 
@@ -48,6 +49,13 @@ class CoachCareer:
     starter_plan: dict[int, dict[str, str]] = field(default_factory=dict)
     ai_difficulty: str = "Normal"
     ai_adaptation: dict[str, int] = field(default_factory=dict)
+    scouting_points: int = 100
+    scouting_reports: list[dict[str, str | int]] = field(default_factory=list)
+    recruiting_board: dict[str, dict[str, str | int]] = field(default_factory=dict)
+    signed_recruits: list[dict[str, str | int]] = field(default_factory=list)
+    roster: list[dict[str, str | int]] = field(default_factory=list)
+    weekly_progress_notes: list[str] = field(default_factory=list)
+    offseason_summary: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -82,6 +90,7 @@ class CareerManager:
         self.save_path = Path(save_path)
         self.stats_manager = stats_manager or PlayerStatsManager(repository=self.repository, seed=seed)
         self.random = random.Random(seed)
+        self.roster_manager = RosterDynamicsManager(seed=seed)
         self._decision_scenarios = self._build_decision_scenarios()
 
     @staticmethod
@@ -173,6 +182,7 @@ class CareerManager:
             raise ValueError(f"Unknown team ID: {team_id}")
 
         schedule = self._generate_schedule(team_id=team_id, weeks=weeks)
+        roster = self._build_initial_roster(team.team_id)
         career = CoachCareer(
             coach_name=coach_name.strip(),
             coach_style=coach_style.strip() or "Balanced",
@@ -180,9 +190,62 @@ class CareerManager:
             team_name=team.name,
             schedule=schedule,
             ai_difficulty=ai_difficulty,
+            roster=roster,
         )
         self.save(career)
         return career
+
+
+    def _build_initial_roster(self, team_id: str) -> list[dict[str, str | int]]:
+        players = self.repository.get_players_for_team(team_id)
+        return [
+            {
+                "player_id": p.player_id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "position": p.position,
+                "overall": p.overall,
+                "potential": p.potential,
+                "age": p.age,
+                "year": p.year,
+                "player_status": p.player_status,
+            }
+            for p in players
+        ]
+
+    def invest_in_scouting(self, career: CoachCareer, investment: int) -> CoachCareer:
+        spend = max(0, min(career.scouting_points, investment))
+        if spend <= 0:
+            raise ValueError("Not enough scouting points to invest.")
+        known_ids = set(career.recruiting_board)
+        reports = self.roster_manager.generate_scouting_reports(spend, known_ids)
+        career.scouting_points -= spend
+        career.scouting_reports = reports
+        for recruit in reports:
+            recruit_payload = dict(recruit)
+            recruit_payload["potential"] = int(recruit_payload.get("overall", 60)) + self.random.randint(5, 16)
+            career.recruiting_board[str(recruit["recruit_id"])] = recruit_payload
+        self.save(career)
+        return career
+
+    def offer_recruit(self, career: CoachCareer, recruit_id: str, salary_offer: int) -> tuple[CoachCareer, bool, str]:
+        recruit = career.recruiting_board.get(recruit_id)
+        if recruit is None:
+            raise ValueError("Recruit not found on your board.")
+        reputation = min(95.0, 50.0 + career.prestige * 1.5 + career.wins * 0.9)
+        role_score = 6.0 if str(recruit.get("position")) in {"QB", "RB", "WR", "CB", "LB"} else 3.0
+        result = self.roster_manager.evaluate_offer(recruit, salary_offer, reputation, role_score)
+        if result.accepted:
+            recruit["player_id"] = recruit["recruit_id"]
+            recruit["first_name"], recruit["last_name"] = str(recruit["name"]).split(" ", 1)
+            recruit["year"] = "Freshman"
+            recruit["player_status"] = "Current"
+            recruit["age"] = 18
+            career.signed_recruits.append(dict(recruit))
+            career.recruiting_board.pop(recruit_id, None)
+        self.save(career)
+        msg = f"{result.reason} (score {result.score})"
+        return career, result.accepted, msg
 
     def _generate_schedule(self, team_id: str, weeks: int = 12) -> list[ScheduledGame]:
         team_ids = [tid for tid in self.repository.iter_team_ids() if tid != team_id]
@@ -261,6 +324,11 @@ class CareerManager:
         career.defense_modifier = int(career.defense_modifier * 0.75)
         career.morale = max(20, min(100, career.morale + (1 if outcome == "W" else -1)))
 
+        team_success = (career.wins - career.losses) / max(1, next_game.week)
+        progress_updates = self.roster_manager.weekly_progression(career.roster, team_success)
+        if progress_updates:
+            career.weekly_progress_notes = progress_updates[-10:]
+
         career.current_week = next_game.week + 1
         self._update_ai_memory(career, my_strategy)
         self.stats_manager.record_game(result.home_team, result.away_team)
@@ -326,6 +394,16 @@ class CareerManager:
         return None
 
     def reset_for_new_season(self, career: CoachCareer, weeks: int = 12) -> CoachCareer:
+        updated_roster, summary = self.roster_manager.run_offseason(career.roster)
+        if career.signed_recruits:
+            for recruit in career.signed_recruits:
+                updated_roster.append(dict(recruit))
+                summary.append(f"Signed recruit {recruit['name']} ({recruit['position']}) OVR {recruit['overall']}")
+        career.roster = updated_roster
+        career.signed_recruits = []
+        career.offseason_summary = summary[-20:]
+        career.scouting_points = min(200, career.scouting_points + 60)
+        career.scouting_reports = []
         career.schedule = self._generate_schedule(career.team_id, weeks=weeks)
         career.current_week = 1
         career.season += 1
@@ -368,4 +446,11 @@ class CareerManager:
             starter_plan={int(k): v for k, v in data.get("starter_plan", {}).items()},
             ai_difficulty=data.get("ai_difficulty", "Normal"),
             ai_adaptation={k: int(v) for k, v in data.get("ai_adaptation", {}).items()},
+            scouting_points=int(data.get("scouting_points", 100)),
+            scouting_reports=data.get("scouting_reports", []),
+            recruiting_board=data.get("recruiting_board", {}),
+            signed_recruits=data.get("signed_recruits", []),
+            roster=data.get("roster", self._build_initial_roster(data["team_id"])),
+            weekly_progress_notes=data.get("weekly_progress_notes", []),
+            offseason_summary=data.get("offseason_summary", []),
         )
