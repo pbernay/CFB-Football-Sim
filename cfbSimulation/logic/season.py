@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from enum import Enum
 
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import ScheduledGame
 from cfbSimulation.logic.simulator import GameResult, GameSimulator
+
+
+class SeasonPhase(str, Enum):
+    REGULAR = "regular"
+    SEMIFINAL = "semifinal"
+    CHAMPIONSHIP = "championship"
+    COMPLETE = "complete"
 
 
 @dataclass
@@ -19,6 +27,11 @@ class SeasonState:
     losses: int = 0
     current_week: int = 1
     schedule: list[ScheduledGame] = field(default_factory=list)
+    playoff_schedule: list[ScheduledGame] = field(default_factory=list)
+    playoff_wins: int = 0
+    playoff_losses: int = 0
+    phase: SeasonPhase = SeasonPhase.REGULAR
+    champion: bool = False
 
 
 class SeasonManager:
@@ -64,15 +77,26 @@ class SeasonManager:
 
     @staticmethod
     def get_next_game(state: SeasonState) -> ScheduledGame | None:
-        for game in state.schedule:
-            if not game.played:
-                return game
+        if state.phase == SeasonPhase.REGULAR:
+            for game in state.schedule:
+                if not game.played:
+                    return game
+            return None
+
+        if state.phase in (SeasonPhase.SEMIFINAL, SeasonPhase.CHAMPIONSHIP):
+            for game in state.playoff_schedule:
+                if not game.played:
+                    return game
         return None
 
     def play_next_game(self, state: SeasonState) -> tuple[SeasonState, GameResult, ScheduledGame]:
         next_game = self.get_next_game(state)
         if next_game is None:
-            raise ValueError("Season complete. No remaining games.")
+            if state.phase == SeasonPhase.REGULAR:
+                self._begin_playoffs(state)
+                next_game = self.get_next_game(state)
+            if next_game is None:
+                raise ValueError("Season complete. No remaining games.")
 
         home_id = state.team_id if next_game.is_home else next_game.opponent_team_id
         away_id = next_game.opponent_team_id if next_game.is_home else state.team_id
@@ -89,10 +113,59 @@ class SeasonManager:
         outcome = "W" if my_score > opp_score else "L"
         next_game.result_summary = f"Week {next_game.week}: {outcome} {my_score}-{opp_score} vs {next_game.opponent_name}"
 
-        if my_score > opp_score:
-            state.wins += 1
-        else:
-            state.losses += 1
+        if state.phase == SeasonPhase.REGULAR:
+            if my_score > opp_score:
+                state.wins += 1
+            else:
+                state.losses += 1
+            state.current_week = next_game.week + 1
+            if self.get_next_game(state) is None:
+                self._begin_playoffs(state)
+            return state, result, next_game
 
-        state.current_week = next_game.week + 1
+        if my_score > opp_score:
+            state.playoff_wins += 1
+            if state.phase == SeasonPhase.SEMIFINAL:
+                self._setup_championship(state)
+            else:
+                state.phase = SeasonPhase.COMPLETE
+                state.champion = True
+        else:
+            state.playoff_losses += 1
+            state.phase = SeasonPhase.COMPLETE
+            state.champion = False
+
         return state, result, next_game
+
+    def _begin_playoffs(self, state: SeasonState) -> None:
+        state.phase = SeasonPhase.SEMIFINAL
+        opponent_id = self._pick_playoff_opponent(state.team_id, excluded=set())
+        opponent = self.repository.get_team(opponent_id)
+        state.playoff_schedule = [
+            ScheduledGame(
+                week=len(state.schedule) + 1,
+                opponent_team_id=opponent_id,
+                opponent_name=(opponent.name if opponent else opponent_id),
+                is_home=False,
+            )
+        ]
+
+    def _setup_championship(self, state: SeasonState) -> None:
+        state.phase = SeasonPhase.CHAMPIONSHIP
+        excluded = {game.opponent_team_id for game in state.playoff_schedule}
+        opponent_id = self._pick_playoff_opponent(state.team_id, excluded=excluded)
+        opponent = self.repository.get_team(opponent_id)
+        state.playoff_schedule.append(
+            ScheduledGame(
+                week=len(state.schedule) + 2,
+                opponent_team_id=opponent_id,
+                opponent_name=(opponent.name if opponent else opponent_id),
+                is_home=False,
+            )
+        )
+
+    def _pick_playoff_opponent(self, team_id: str, excluded: set[str]) -> str:
+        candidates = [tid for tid in self.repository.iter_team_ids() if tid != team_id and tid not in excluded]
+        if not candidates:
+            raise ValueError("No eligible playoff opponents found.")
+        return self.random.choice(candidates)

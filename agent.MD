@@ -146,3 +146,9 @@ Notes:
 - Treat older `logic/*.py` prototype files as legacy unless explicitly reviving them.
 - Keep data access centralized through `DatabaseRepository` where possible.
 - Keep deterministic behavior available via explicit random seeds for reproducibility/tests.
+
+
+## Recent updates (agent-maintained)
+- Career mode now includes lightweight progression stats (`coach_level`, `prestige`, `morale`) and decision scenarios that apply temporary modifiers to weekly outcomes.
+- Season mode now includes a playoff bracket phase (semifinal + championship) after regular-season games complete.
+- GUI exposes a **Make Decision** action in career mode and shows playoff phase/status in season mode.

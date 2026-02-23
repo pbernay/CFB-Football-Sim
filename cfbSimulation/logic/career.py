@@ -36,7 +36,31 @@ class CoachCareer:
     losses: int = 0
     current_week: int = 1
     season: int = 1
+    coach_level: int = 1
+    prestige: int = 0
+    morale: int = 50
+    offense_modifier: int = 0
+    defense_modifier: int = 0
     schedule: list[ScheduledGame] = field(default_factory=list)
+    decision_history: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class DecisionOption:
+    key: str
+    label: str
+    morale_delta: int = 0
+    offense_delta: int = 0
+    defense_delta: int = 0
+    prestige_delta: int = 0
+
+
+@dataclass(frozen=True)
+class DecisionScenario:
+    key: str
+    title: str
+    description: str
+    options: tuple[DecisionOption, ...]
 
 
 class CareerManager:
@@ -51,6 +75,70 @@ class CareerManager:
         self.simulator = simulator or GameSimulator(repository=self.repository, seed=seed)
         self.save_path = Path(save_path)
         self.random = random.Random(seed)
+        self._decision_scenarios = self._build_decision_scenarios()
+
+    @staticmethod
+    def _build_decision_scenarios() -> tuple[DecisionScenario, ...]:
+        return (
+            DecisionScenario(
+                key="practice_focus",
+                title="Weekly Practice Focus",
+                description="Staff asks where to spend most reps this week.",
+                options=(
+                    DecisionOption("film_room", "Film Room (Defense Focus)", defense_delta=2, morale_delta=-1),
+                    DecisionOption("tempo", "Tempo Offense Drills", offense_delta=2, morale_delta=1),
+                    DecisionOption("recovery", "Recovery + Fundamentals", morale_delta=3, prestige_delta=1),
+                ),
+            ),
+            DecisionScenario(
+                key="discipline",
+                title="Locker Room Discipline",
+                description="A star player missed curfew before game week.",
+                options=(
+                    DecisionOption("suspend", "Suspend for a half", defense_delta=1, prestige_delta=2, morale_delta=-2),
+                    DecisionOption("warning", "Private warning", morale_delta=1, prestige_delta=0),
+                    DecisionOption("team_vote", "Let captains decide", morale_delta=2, prestige_delta=1),
+                ),
+            ),
+            DecisionScenario(
+                key="recruiting",
+                title="Recruiting Weekend",
+                description="A key recruit can visit during a game week.",
+                options=(
+                    DecisionOption("host", "Host full visit", prestige_delta=3, morale_delta=-1),
+                    DecisionOption("assistant", "Delegate to assistants", prestige_delta=1, offense_delta=1),
+                    DecisionOption("postpone", "Postpone until offseason", morale_delta=1),
+                ),
+            ),
+        )
+
+    def list_decision_scenarios(self) -> tuple[DecisionScenario, ...]:
+        return self._decision_scenarios
+
+
+    def get_weekly_scenario(self, career: CoachCareer) -> DecisionScenario:
+        scenarios = self.list_decision_scenarios()
+        return scenarios[(career.current_week - 1) % len(scenarios)]
+
+    def apply_decision(self, career: CoachCareer, scenario_key: str, option_key: str) -> CoachCareer:
+        scenario = next((item for item in self._decision_scenarios if item.key == scenario_key), None)
+        if scenario is None:
+            raise ValueError(f"Unknown decision scenario: {scenario_key}")
+
+        option = next((item for item in scenario.options if item.key == option_key), None)
+        if option is None:
+            raise ValueError(f"Unknown decision option '{option_key}' for scenario '{scenario_key}'")
+
+        career.morale = max(0, min(100, career.morale + option.morale_delta))
+        career.offense_modifier = max(-5, min(10, career.offense_modifier + option.offense_delta))
+        career.defense_modifier = max(-5, min(10, career.defense_modifier + option.defense_delta))
+        career.prestige = max(0, career.prestige + option.prestige_delta)
+        if career.prestige >= career.coach_level * 10:
+            career.coach_level += 1
+
+        career.decision_history.append(f"S{career.season}W{career.current_week}: {scenario.title} -> {option.label}")
+        self.save(career)
+        return career
 
     def create_new_career(self, coach_name: str, coach_style: str, team_id: str, weeks: int = 12) -> CoachCareer:
         if not coach_name.strip():
@@ -108,6 +196,9 @@ class CareerManager:
         else:
             my_score, opp_score = result.away_team.score, result.home_team.score
 
+        score_swing = self._decision_score_swing(career)
+        my_score = max(0, my_score + score_swing)
+
         next_game.played = True
         next_game.my_score = my_score
         next_game.opp_score = opp_score
@@ -116,12 +207,33 @@ class CareerManager:
 
         if my_score > opp_score:
             career.wins += 1
+            career.prestige += 2
         else:
             career.losses += 1
+            career.prestige = max(0, career.prestige - 1)
+
+        if career.prestige >= career.coach_level * 10:
+            career.coach_level += 1
+
+        career.offense_modifier = int(career.offense_modifier * 0.75)
+        career.defense_modifier = int(career.defense_modifier * 0.75)
+        career.morale = max(20, min(100, career.morale + (1 if outcome == "W" else -1)))
 
         career.current_week = next_game.week + 1
         self.save(career)
         return career, result, next_game
+
+    def _decision_score_swing(self, career: CoachCareer) -> int:
+        morale_bonus = (career.morale - 50) // 15
+        style_bonus = 0
+        style = career.coach_style.lower()
+        if "run" in style:
+            style_bonus += 1
+        if "defens" in style:
+            style_bonus += 1
+        coach_bonus = career.coach_level // 2
+        total = morale_bonus + career.offense_modifier + career.defense_modifier + style_bonus + coach_bonus
+        return max(-7, min(10, total))
 
     @staticmethod
     def get_next_game(career: CoachCareer) -> ScheduledGame | None:
@@ -162,5 +274,11 @@ class CareerManager:
             losses=data.get("losses", 0),
             current_week=data.get("current_week", 1),
             season=data.get("season", 1),
+            coach_level=data.get("coach_level", 1),
+            prestige=data.get("prestige", 0),
+            morale=data.get("morale", 50),
+            offense_modifier=data.get("offense_modifier", 0),
+            defense_modifier=data.get("defense_modifier", 0),
             schedule=schedule,
+            decision_history=data.get("decision_history", []),
         )

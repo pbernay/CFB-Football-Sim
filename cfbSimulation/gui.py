@@ -6,8 +6,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from cfbSimulation.data.repository import DatabaseRepository
-from cfbSimulation.logic.career import CareerManager, CoachCareer
-from cfbSimulation.logic.season import SeasonManager, SeasonState
+from cfbSimulation.logic.career import CareerManager, CoachCareer, DecisionScenario
+from cfbSimulation.logic.season import SeasonManager, SeasonPhase, SeasonState
 from cfbSimulation.logic.simulator import GameSimulator, TeamSnapshot, format_scoreboard
 
 
@@ -232,14 +232,19 @@ class CFBGameGUI:
 
         next_game = self.season_manager.get_next_game(self.season_state)
         if next_game:
-            upcoming = f"Week {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'})"
+            label = "Playoff" if self.season_state.phase != SeasonPhase.REGULAR else "Week"
+            upcoming = f"{label} {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'})"
+        elif self.season_state.phase == SeasonPhase.COMPLETE:
+            upcoming = "Champion!" if self.season_state.champion else "Eliminated in playoffs"
         else:
-            upcoming = "Season complete."
+            upcoming = "Awaiting playoffs"
 
         self.season_status.config(
             text=(
                 f"Season {self.season_state.season} | {self.season_state.team_name} "
-                f"Record: {self.season_state.wins}-{self.season_state.losses} | Next: {upcoming}"
+                f"Record: {self.season_state.wins}-{self.season_state.losses} | "
+                f"Playoffs: {self.season_state.playoff_wins}-{self.season_state.playoff_losses} | "
+                f"Phase: {self.season_state.phase.value.title()} | Next: {upcoming}"
             )
         )
 
@@ -249,11 +254,15 @@ class CFBGameGUI:
             site = "Home" if game.is_home else "Away"
             self.season_schedule.insert(tk.END, f"Week {game.week:>2} | {site:<4} | {marker}")
 
+        for game in self.season_state.playoff_schedule:
+            marker = game.result_summary if game.played else f"vs {game.opponent_name}"
+            self.season_schedule.insert(tk.END, f"Playoff {game.week:>2} | Away | {marker}")
+
     def play_season_week(self) -> None:
         if self.season_state is None:
             messagebox.showinfo("No Season", "Start a season first.")
             return
-        if self.season_manager.get_next_game(self.season_state) is None:
+        if self.season_state.phase == SeasonPhase.COMPLETE:
             messagebox.showinfo("Season Complete", "Start a new season to continue.")
             return
 
@@ -289,6 +298,7 @@ class CFBGameGUI:
         ttk.Button(buttons, text="Start Career", command=self.start_career_mode).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Load Career", command=self.load_career_mode).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="Play Next Week", command=self.play_career_week).pack(side=tk.LEFT, padx=6)
+        ttk.Button(buttons, text="Make Decision", command=self.make_career_decision).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="New Season", command=self.new_career_season).pack(side=tk.LEFT, padx=6)
 
         self.career_team = TeamSelectorPreview(setup, "Career Team", self.teams, self.simulator)
@@ -354,6 +364,7 @@ class CFBGameGUI:
         self.career_status.config(
             text=(
                 f"Coach {self.career.coach_name} ({self.career.coach_style}) | "
+                f"Lvl {self.career.coach_level} Prestige {self.career.prestige} Morale {self.career.morale} | "
                 f"{self.career.team_name} | Season {self.career.season} | "
                 f"Record {self.career.wins}-{self.career.losses} | Next: {upcoming}"
             )
@@ -378,6 +389,55 @@ class CFBGameGUI:
         self.career_log.insert(tk.END, "\n".join(lines) + "\n" + ("-" * 70) + "\n")
         self.career_log.see(tk.END)
         self.refresh_career_view()
+
+    def make_career_decision(self) -> None:
+        if self.career is None:
+            messagebox.showinfo("No Career", "Create or load a career first.")
+            return
+
+        scenarios = self.career_manager.list_decision_scenarios()
+        if not scenarios:
+            messagebox.showinfo("No Scenarios", "No decision scenarios are available.")
+            return
+
+        scenario = self.career_manager.get_weekly_scenario(self.career)
+        choice = self._choose_decision_option(scenario)
+        if choice is None:
+            return
+
+        self.career_log.insert(tk.END, f"Decision: {scenario.title} -> {choice}\n{'-' * 70}\n")
+        self.career_log.see(tk.END)
+        self.refresh_career_view()
+
+    def _choose_decision_option(self, scenario: DecisionScenario) -> str | None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title(scenario.title)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text=scenario.description, wraplength=440).pack(anchor="w", padx=12, pady=(12, 8))
+        selected = tk.StringVar(value=scenario.options[0].key)
+        label_map = {item.key: item.label for item in scenario.options}
+
+        for option in scenario.options:
+            ttk.Radiobutton(dialog, text=option.label, variable=selected, value=option.key).pack(anchor="w", padx=16, pady=2)
+
+        result = {"value": None}
+
+        def confirm() -> None:
+            result["value"] = label_map[selected.get()]
+            self.career_manager.apply_decision(self.career, scenario.key, selected.get())
+            dialog.destroy()
+
+        def cancel() -> None:
+            dialog.destroy()
+
+        controls = ttk.Frame(dialog)
+        controls.pack(fill=tk.X, padx=12, pady=12)
+        ttk.Button(controls, text="Apply", command=confirm).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Cancel", command=cancel).pack(side=tk.LEFT, padx=8)
+
+        dialog.wait_window()
+        return result["value"]
 
     def new_career_season(self) -> None:
         if self.career is None:
