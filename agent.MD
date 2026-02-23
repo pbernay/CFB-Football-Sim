@@ -164,3 +164,8 @@ Notes:
 - Added career roster dynamics with weekly progression/regression and offseason churn (graduation/draft departures, offseason rating changes, and signed recruits joining next season) plus offseason summary logging in the GUI.
 - Expanded database repository capabilities with explicit Teams/Players schema initialization, full CRUD support, and dedicated CRUD/performance tests plus design notes in `docs/database_design.md`.
 - Career mode UI now keeps the console at the top of the career panel, persists scouting tables between openings, supports sending offers directly from scouting, and tracks recruiting budget/progress feedback based on prior-season record.
+
+- Career recruiting flow now runs fully through the scouting screen (no separate Make Offer action), with improved offer defaults and easier recruit acceptance tuning.
+- Career decisions are now triggered randomly during week progression and include new player-development outcomes that can boost recruiting leverage and roster potential growth.
+- Career team ratings panel now refreshes from the evolving career roster so OVR/OFF/DEF/ST reflect progression changes in-season.
+- Added automatic best-player starter selection for career weeks, expanded lineup coverage to all major positions (QB/RB/WR/TE/OL/DL/LB/DB/K/P), and use auto-starters when no manual plan is saved.
