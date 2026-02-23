@@ -80,11 +80,11 @@ python -m cfbSimulation.main --gui
 ```
 
 From the GUI you can:
-- Choose from **Single Game**, **Season Mode**, and **Career Mode** using the game mode selector.
-- See a football helmet preview, team ratings (OVR/OFF/DEF/ST), and top players while selecting teams.
-- Play one-off matchups in Single Game mode.
-- Run a full week-by-week season in Season Mode.
-- Create/load a coach and play persistent week-by-week careers in Career Mode.
+- Create a coach profile (name + style).
+- Select any team in the database.
+- Play through a week-by-week season schedule.
+- Save/load your career automatically and continue later.
+- Start the next season after finishing the current one.
 
 ### 3) Run a single quick simulation from CLI
 
