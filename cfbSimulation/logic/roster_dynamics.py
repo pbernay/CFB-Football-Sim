@@ -75,8 +75,8 @@ class RosterDynamicsManager:
         expected_role_score: float,
     ) -> RecruitingOfferResult:
         aspiration = str(recruit["aspiration"])
-        desired_salary = 300 + int(recruit["overall"]) * 4 + int(recruit["potential"]) * 2
-        salary_score = max(-18.0, min(28.0, (salary_offer - desired_salary) / 30.0))
+        desired_salary = 220 + int(recruit["overall"]) * 3 + int(recruit["potential"]) * 2
+        salary_score = max(-14.0, min(30.0, (salary_offer - desired_salary) / 26.0))
         reputation_score = (team_reputation - 50.0) / 2.4
         role_score = expected_role_score
 
@@ -92,8 +92,8 @@ class RosterDynamicsManager:
         else:
             aspiration_mod += 1.5
 
-        score = salary_score + reputation_score + role_score + aspiration_mod + self.random.uniform(-6, 6)
-        accepted = score >= 16
+        score = salary_score + reputation_score + role_score + aspiration_mod + self.random.uniform(-4.5, 5.5)
+        accepted = score >= 13
         reason = "Accepted offer" if accepted else "Rejected offer"
         return RecruitingOfferResult(accepted=accepted, reason=reason, score=round(score, 2))
 

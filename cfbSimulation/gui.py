@@ -320,7 +320,7 @@ class CFBGameGUI(QMainWindow):
             players = self.career.roster
         else:
             players = self.repository.get_players_for_team(team_id)
-        positions = ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]
+        positions = ["QB", "RB", "WR", "TE", "OT", "OG", "C", "DE", "DT", "LB", "CB", "S", "K", "P"]
         current = self.single_home_starters if side == "home" else self.single_away_starters
 
         dialog = QDialog(self)
@@ -479,8 +479,6 @@ class CFBGameGUI(QMainWindow):
             ("Roster", self.open_roster_manager),
             ("Player Stats", self.open_player_stats_dialog),
             ("Scout Recruits", self.open_scouting_dialog),
-            ("Make Offer", self.open_recruiting_dialog),
-            ("Make Decision", self.make_career_decision),
             ("New Season", self.new_career_season),
         ]:
             btn = QPushButton(label)
@@ -553,6 +551,25 @@ class CFBGameGUI(QMainWindow):
             f"Budget ${self.career.recruiting_budget_remaining}/${self.career.recruiting_budget} | "
             f"ScoutPts {self.career.scouting_points} | Signed {len(self.career.signed_recruits)} | Next: {upcoming}"
         )
+        for idx in range(self.career_team.combo.count()):
+            label = self.career_team.combo.itemText(idx)
+            if label.startswith(f"{self.career.team_id} -"):
+                self.career_team.combo.setCurrentIndex(idx)
+                break
+
+        if self.career.roster:
+            offense_positions = {"QB", "RB", "WR", "TE", "OT", "OG", "C"}
+            defense_positions = {"DE", "DT", "LB", "CB", "S"}
+            special_positions = {"K", "P"}
+            def avg(pos_set: set[str]) -> float:
+                vals = [int(p.get("overall", 0)) for p in self.career.roster if str(p.get("position", "")) in pos_set]
+                return round(sum(vals) / len(vals), 2) if vals else 50.0
+            off = avg(offense_positions)
+            deff = avg(defense_positions)
+            st = avg(special_positions)
+            ovr = round((off + deff + st) / 3, 2)
+            self.career_team.ratings_label.setText(f"OVR {ovr} | OFF {off} | DEF {deff} | ST {st}")
+
         self.career_schedule.clear()
         for game in self.career.schedule:
             marker = game.result_summary if game.played else f"vs {game.opponent_name}"
@@ -568,6 +585,11 @@ class CFBGameGUI(QMainWindow):
             return
         self.career, result, played_game = self.career_manager.play_next_game(self.career)
         self.career_log.append(f"{played_game.result_summary}\n\n{format_scoreboard(result)}\n{'-' * 70}")
+        if self.career_manager.should_trigger_random_decision(self.career):
+            scenario = self.career_manager.get_weekly_scenario(self.career)
+            choice = self._choose_decision_option(scenario)
+            if choice:
+                self.career_log.append(f"Random Decision: {scenario.title} -> {choice}\n{'-' * 70}")
         self.refresh_career_view()
 
     def open_strategy_dialog(self) -> None:
@@ -589,7 +611,7 @@ class CFBGameGUI(QMainWindow):
         strategy_combo.setCurrentText(self.career.strategy_plan.get(next_game.week, "Balanced"))
         layout.addWidget(strategy_combo)
 
-        positions = ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]
+        positions = ["QB", "RB", "WR", "TE", "OT", "OG", "C", "DE", "DT", "LB", "CB", "S", "K", "P"]
         players = self.repository.get_players_for_team(self.career.team_id)
         existing = self.career.starter_plan.get(next_game.week, {})
         starter_choices: dict[str, QComboBox] = {}
@@ -624,6 +646,8 @@ class CFBGameGUI(QMainWindow):
             for pos, combo in starter_choices.items():
                 if combo.currentText() != "(No change)":
                     starters[pos] = combo.currentText().split("|", 1)[0].strip()
+            if not starters:
+                starters = self.career_manager.auto_set_best_starters(self.career)
             self.career_manager.set_week_starters(self.career, next_game.week, starters)
             self.career_log.append(f"Game plan set for Week {next_game.week}: {strategy_combo.currentText()}\n{'-' * 70}")
             self.refresh_career_view()
@@ -842,36 +866,6 @@ class CFBGameGUI(QMainWindow):
         self._populate_scouting_table()
         dialog.exec()
 
-    def open_recruiting_dialog(self) -> None:
-        if self.career is None:
-            QMessageBox.information(self, "No Career", "Create or load a career first.")
-            return
-        board = list(self.career.recruiting_board.values())
-        if not board:
-            QMessageBox.information(self, "Recruiting", "No recruits on your board yet. Scout first.")
-            return
-
-        options = [f"{r['recruit_id']} | {r['name']} ({r['position']}) OVR {r['overall']}" for r in board]
-        selected, ok = QInputDialog.getItem(self, "Recruiting Offer", "Select recruit:", options, editable=False)
-        if not ok:
-            return
-        recruit_id = selected.split("|", 1)[0].strip()
-        min_offer = 250
-        max_offer = max(min_offer, self.career.recruiting_budget_remaining)
-        default_offer = min(650, max_offer)
-        offer, ok_offer = QInputDialog.getInt(
-            self,
-            "Recruiting Offer",
-            f"Enter salary offer (remaining budget ${self.career.recruiting_budget_remaining}):",
-            default_offer,
-            min_offer,
-            max_offer,
-            25,
-        )
-        if not ok_offer:
-            return
-        self._send_recruit_offer(recruit_id, offer)
-
     def _populate_scouting_table(self) -> None:
         if self.career is None or not hasattr(self, "scouting_table"):
             return
@@ -903,9 +897,9 @@ class CFBGameGUI(QMainWindow):
         if recruit_id_item is None:
             return
         recruit_id = recruit_id_item.text().strip()
-        min_offer = 250
+        min_offer = 200
         max_offer = max(min_offer, self.career.recruiting_budget_remaining)
-        default_offer = min(650, max_offer)
+        default_offer = min(850, max_offer)
         offer, ok_offer = QInputDialog.getInt(
             self.scouting_dialog or self,
             "Recruiting Offer",

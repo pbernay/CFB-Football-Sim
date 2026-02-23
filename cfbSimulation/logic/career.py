@@ -43,6 +43,8 @@ class CoachCareer:
     morale: int = 50
     offense_modifier: int = 0
     defense_modifier: int = 0
+    recruiting_modifier: int = 0
+    player_development_bonus: int = 0
     schedule: list[ScheduledGame] = field(default_factory=list)
     decision_history: list[str] = field(default_factory=list)
     strategy_plan: dict[int, str] = field(default_factory=dict)
@@ -70,6 +72,9 @@ class DecisionOption:
     offense_delta: int = 0
     defense_delta: int = 0
     prestige_delta: int = 0
+    recruiting_delta: int = 0
+    development_delta: int = 0
+    potential_delta: int = 0
 
 
 @dataclass(frozen=True)
@@ -107,7 +112,7 @@ class CareerManager:
                 options=(
                     DecisionOption("film_room", "Film Room (Defense Focus)", defense_delta=2, morale_delta=-1),
                     DecisionOption("tempo", "Tempo Offense Drills", offense_delta=2, morale_delta=1),
-                    DecisionOption("recovery", "Recovery + Fundamentals", morale_delta=3, prestige_delta=1),
+                    DecisionOption("recovery", "Recovery + Fundamentals", morale_delta=3, prestige_delta=1, development_delta=1),
                 ),
             ),
             DecisionScenario(
@@ -117,7 +122,7 @@ class CareerManager:
                 options=(
                     DecisionOption("suspend", "Suspend for a half", defense_delta=1, prestige_delta=2, morale_delta=-2),
                     DecisionOption("warning", "Private warning", morale_delta=1, prestige_delta=0),
-                    DecisionOption("team_vote", "Let captains decide", morale_delta=2, prestige_delta=1),
+                    DecisionOption("team_vote", "Let captains decide", morale_delta=2, prestige_delta=1, development_delta=1),
                 ),
             ),
             DecisionScenario(
@@ -125,9 +130,19 @@ class CareerManager:
                 title="Recruiting Weekend",
                 description="A key recruit can visit during a game week.",
                 options=(
-                    DecisionOption("host", "Host full visit", prestige_delta=3, morale_delta=-1),
-                    DecisionOption("assistant", "Delegate to assistants", prestige_delta=1, offense_delta=1),
+                    DecisionOption("host", "Host full visit", prestige_delta=3, morale_delta=-1, recruiting_delta=3),
+                    DecisionOption("assistant", "Delegate to assistants", prestige_delta=1, offense_delta=1, recruiting_delta=2),
                     DecisionOption("postpone", "Postpone until offseason", morale_delta=1),
+                ),
+            ),
+            DecisionScenario(
+                key="player_support",
+                title="Player Development Opportunity",
+                description="Alumni offer to sponsor extra skill coaching for veterans or freshmen.",
+                options=(
+                    DecisionOption("veterans", "Focus on current starters", development_delta=2, morale_delta=1),
+                    DecisionOption("young_core", "Invest in youth pipeline", potential_delta=2, recruiting_delta=1),
+                    DecisionOption("split", "Split resources", development_delta=1, potential_delta=1),
                 ),
             ),
         )
@@ -148,6 +163,13 @@ class CareerManager:
         scenarios = self.list_decision_scenarios()
         return scenarios[(career.current_week - 1) % len(scenarios)]
 
+    def should_trigger_random_decision(self, career: CoachCareer) -> bool:
+        if self.get_next_game(career) is None:
+            return False
+        weekly_chance = 0.34 if career.current_week > 1 else 0.0
+        morale_impact = (50 - career.morale) / 250.0
+        return self.random.random() < max(0.18, min(0.55, weekly_chance + morale_impact))
+
     def apply_decision(self, career: CoachCareer, scenario_key: str, option_key: str) -> CoachCareer:
         scenario = next((item for item in self._decision_scenarios if item.key == scenario_key), None)
         if scenario is None:
@@ -160,13 +182,24 @@ class CareerManager:
         career.morale = max(0, min(100, career.morale + option.morale_delta))
         career.offense_modifier = max(-5, min(10, career.offense_modifier + option.offense_delta))
         career.defense_modifier = max(-5, min(10, career.defense_modifier + option.defense_delta))
+        career.recruiting_modifier = max(-4, min(8, career.recruiting_modifier + option.recruiting_delta))
+        career.player_development_bonus = max(0, min(6, career.player_development_bonus + option.development_delta))
         career.prestige = max(0, career.prestige + option.prestige_delta)
+        self._apply_potential_boost(career, option.potential_delta)
         if career.prestige >= career.coach_level * 10:
             career.coach_level += 1
 
         career.decision_history.append(f"S{career.season}W{career.current_week}: {scenario.title} -> {option.label}")
         self.save(career)
         return career
+
+    def _apply_potential_boost(self, career: CoachCareer, potential_delta: int) -> None:
+        if potential_delta <= 0 or not career.roster:
+            return
+        boost_count = min(5, len(career.roster))
+        for player in self.random.sample(career.roster, k=boost_count):
+            current = int(player.get("potential", player.get("overall", 60)))
+            player["potential"] = min(99, current + potential_delta)
 
     def create_new_career(
         self,
@@ -249,7 +282,7 @@ class CareerManager:
             raise ValueError(
                 f"Offer exceeds remaining recruiting budget ({career.recruiting_budget_remaining})."
             )
-        reputation = min(95.0, 50.0 + career.prestige * 1.5 + career.wins * 0.9)
+        reputation = min(95.0, 50.0 + career.prestige * 1.5 + career.wins * 0.9 + career.recruiting_modifier * 1.75)
         role_score = 6.0 if str(recruit.get("position")) in {"QB", "RB", "WR", "CB", "LB"} else 3.0
         result = self.roster_manager.evaluate_offer(recruit, salary_offer, reputation, role_score)
         progress = self.recruiting_progress_from_score(result.score)
@@ -308,6 +341,8 @@ class CareerManager:
         difficulty = self.ai_difficulty_profiles().get(career.ai_difficulty, self.ai_difficulty_profiles()["Normal"])
         opp_rating_bonus = difficulty["rating_bonus"]
 
+        if next_game.week not in career.starter_plan:
+            career.starter_plan[next_game.week] = self.auto_set_best_starters(career)
         my_starters = career.starter_plan.get(next_game.week, {})
         result = self.simulator.simulate_single_game(
             home_id,
@@ -350,6 +385,10 @@ class CareerManager:
 
         team_success = (career.wins - career.losses) / max(1, next_game.week)
         progress_updates = self.roster_manager.weekly_progression(career.roster, team_success)
+        if career.player_development_bonus > 0:
+            for _ in range(career.player_development_bonus):
+                progress_updates.extend(self.roster_manager.weekly_progression(career.roster, team_success + 0.08))
+            career.player_development_bonus = max(0, career.player_development_bonus - 1)
         if progress_updates:
             career.weekly_progress_notes = progress_updates[-10:]
 
@@ -358,6 +397,18 @@ class CareerManager:
         self.stats_manager.record_game(result.home_team, result.away_team)
         self.save(career)
         return career, result, next_game
+
+    def auto_set_best_starters(self, career: CoachCareer) -> dict[str, str]:
+        required_positions = ("QB", "RB", "WR", "TE", "OT", "OG", "C", "DE", "DT", "LB", "CB", "S", "K", "P")
+        starters: dict[str, str] = {}
+        roster = career.roster or self._build_initial_roster(career.team_id)
+        for position in required_positions:
+            candidates = [p for p in roster if str(p.get("position", "")) == position]
+            if not candidates:
+                continue
+            best = max(candidates, key=lambda p: int(p.get("overall", 0)))
+            starters[position] = str(best.get("player_id", best.get("recruit_id", "")))
+        return starters
 
 
     def _counter_strategy(self, strategy: StrategyProfile, career: CoachCareer) -> StrategyProfile:
@@ -437,6 +488,8 @@ class CareerManager:
         career.recruiting_budget_remaining = career.recruiting_budget
         career.wins = 0
         career.losses = 0
+        career.recruiting_modifier = max(0, career.recruiting_modifier - 1)
+        career.player_development_bonus = 0
         self.save(career)
         return career
 
@@ -468,6 +521,8 @@ class CareerManager:
             morale=data.get("morale", 50),
             offense_modifier=data.get("offense_modifier", 0),
             defense_modifier=data.get("defense_modifier", 0),
+            recruiting_modifier=data.get("recruiting_modifier", 0),
+            player_development_bonus=data.get("player_development_bonus", 0),
             schedule=schedule,
             decision_history=data.get("decision_history", []),
             strategy_plan={int(k): v for k, v in data.get("strategy_plan", {}).items()},

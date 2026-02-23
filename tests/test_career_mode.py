@@ -71,3 +71,24 @@ def test_strategy_and_starter_plan_saved(tmp_path: Path):
     assert loaded is not None
     assert loaded.strategy_plan[1] == "Air Raid"
     assert loaded.starter_plan[1]["QB"]
+
+
+def test_auto_starters_cover_all_core_positions(tmp_path: Path):
+    manager = CareerManager(save_path=tmp_path / "career.json", seed=11)
+    career = manager.create_new_career("Auto", "Balanced", "tID1", weeks=1)
+
+    starters = manager.auto_set_best_starters(career)
+
+    for pos in {"QB", "RB", "WR", "TE", "OT", "OG", "C", "DE", "DT", "LB", "CB", "S", "K", "P"}:
+        assert pos in starters
+
+
+def test_decision_can_increase_recruiting_modifier(tmp_path: Path):
+    manager = CareerManager(save_path=tmp_path / "career.json", seed=5)
+    career = manager.create_new_career("Recruit", "Balanced", "tID1", weeks=2)
+
+    recruiting = next(s for s in manager.list_decision_scenarios() if s.key == "recruiting")
+    host = next(o for o in recruiting.options if o.key == "host")
+    manager.apply_decision(career, recruiting.key, host.key)
+
+    assert career.recruiting_modifier > 0
