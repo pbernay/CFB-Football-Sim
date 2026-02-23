@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QRadioButton,
     QSplitter,
     QSpinBox,
@@ -139,6 +140,7 @@ class CFBGameGUI(QMainWindow):
 
         self.career: CoachCareer | None = None
         self.season_state: SeasonState | None = None
+        self.scouting_dialog: QDialog | None = None
 
         self.teams = self.repository.list_teams(limit=None)
         self.strategy_options = self.simulator.predefined_strategies()
@@ -453,7 +455,7 @@ class CFBGameGUI(QMainWindow):
 
         top = QHBoxLayout()
         left = QVBoxLayout()
-        top.addLayout(left)
+        top.addLayout(left, 3)
         left.addWidget(QLabel("Coach Name:"))
         self.coach_name_input = QLineEdit()
         left.addWidget(self.coach_name_input)
@@ -486,22 +488,22 @@ class CFBGameGUI(QMainWindow):
             actions.addWidget(btn)
         left.addLayout(actions)
 
+        left.addWidget(QLabel("Career Console:"))
+        self.career_log = QTextEdit()
+        self.career_log.setReadOnly(True)
+        self.career_log.setMinimumHeight(180)
+        left.addWidget(self.career_log)
+
         self.career_team = TeamSelectorPreview("Career Team", self.teams, self.simulator)
-        top.addWidget(self.career_team)
+        top.addWidget(self.career_team, 1)
         layout.addLayout(top)
 
         self.career_status = QLabel("Create or load a coach career.")
         self.career_status.setWordWrap(True)
         layout.addWidget(self.career_status)
 
-        splitter = QSplitter(Qt.Horizontal)
         self.career_schedule = QListWidget()
-        self.career_log = QTextEdit()
-        self.career_log.setReadOnly(True)
-        splitter.addWidget(self.career_schedule)
-        splitter.addWidget(self.career_log)
-        splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
+        layout.addWidget(self.career_schedule)
 
         self.stack.addWidget(page)
 
@@ -548,6 +550,7 @@ class CFBGameGUI(QMainWindow):
             f"Lvl {self.career.coach_level} Prestige {self.career.prestige} Morale {self.career.morale} | "
             f"{self.career.team_name} | Season {self.career.season} | "
             f"AI {self.career.ai_difficulty} | Record {self.career.wins}-{self.career.losses} | "
+            f"Budget ${self.career.recruiting_budget_remaining}/${self.career.recruiting_budget} | "
             f"ScoutPts {self.career.scouting_points} | Signed {len(self.career.signed_recruits)} | Next: {upcoming}"
         )
         self.career_schedule.clear()
@@ -801,8 +804,9 @@ class CFBGameGUI(QMainWindow):
             return
 
         dialog = QDialog(self)
+        self.scouting_dialog = dialog
         dialog.setWindowTitle("Scouting")
-        dialog.resize(760, 420)
+        dialog.resize(900, 480)
         layout = QVBoxLayout(dialog)
 
         controls = QHBoxLayout()
@@ -814,12 +818,14 @@ class CFBGameGUI(QMainWindow):
         controls.addWidget(spend)
         scout_btn = QPushButton("Run Scouting")
         controls.addWidget(scout_btn)
+        offer_btn = QPushButton("Send Offer To Selected")
+        controls.addWidget(offer_btn)
         controls.addStretch()
         layout.addLayout(controls)
 
-        table = QTableWidget(0, 5)
-        table.setHorizontalHeaderLabels(["Recruit ID", "Name", "Pos", "OVR", "Scout Outlook"])
-        layout.addWidget(table)
+        self.scouting_table = QTableWidget(0, 6)
+        self.scouting_table.setHorizontalHeaderLabels(["Recruit ID", "Name", "Pos", "OVR", "Scout Outlook", "Offer Progress"])
+        layout.addWidget(self.scouting_table)
 
         def run_scouting() -> None:
             try:
@@ -827,17 +833,13 @@ class CFBGameGUI(QMainWindow):
             except ValueError as exc:
                 QMessageBox.warning(dialog, "Scouting", str(exc))
                 return
-            reports = self.career.scouting_reports
-            table.setRowCount(len(reports))
-            for row, rep in enumerate(reports):
-                table.setItem(row, 0, QTableWidgetItem(str(rep["recruit_id"])))
-                table.setItem(row, 1, QTableWidgetItem(str(rep["name"])))
-                table.setItem(row, 2, QTableWidgetItem(str(rep["position"])))
-                table.setItem(row, 3, QTableWidgetItem(str(rep["overall"])))
-                table.setItem(row, 4, QTableWidgetItem(str(rep["scout_note"])))
+            spend.setRange(5, max(5, self.career.scouting_points))
+            self._populate_scouting_table()
             self.refresh_career_view()
 
         scout_btn.clicked.connect(run_scouting)
+        offer_btn.clicked.connect(self._offer_selected_recruit_from_scouting)
+        self._populate_scouting_table()
         dialog.exec()
 
     def open_recruiting_dialog(self) -> None:
@@ -854,10 +856,78 @@ class CFBGameGUI(QMainWindow):
         if not ok:
             return
         recruit_id = selected.split("|", 1)[0].strip()
-        offer, ok_offer = QInputDialog.getInt(self, "Recruiting Offer", "Enter salary offer (NIL package):", 650, 250, 2200, 25)
+        min_offer = 250
+        max_offer = max(min_offer, self.career.recruiting_budget_remaining)
+        default_offer = min(650, max_offer)
+        offer, ok_offer = QInputDialog.getInt(
+            self,
+            "Recruiting Offer",
+            f"Enter salary offer (remaining budget ${self.career.recruiting_budget_remaining}):",
+            default_offer,
+            min_offer,
+            max_offer,
+            25,
+        )
         if not ok_offer:
             return
-        _, accepted, reason = self.career_manager.offer_recruit(self.career, recruit_id, offer)
+        self._send_recruit_offer(recruit_id, offer)
+
+    def _populate_scouting_table(self) -> None:
+        if self.career is None or not hasattr(self, "scouting_table"):
+            return
+        reports = self.career.scouting_reports
+        self.scouting_table.setRowCount(len(reports))
+        for row, rep in enumerate(reports):
+            recruit_id = str(rep["recruit_id"])
+            self.scouting_table.setItem(row, 0, QTableWidgetItem(recruit_id))
+            self.scouting_table.setItem(row, 1, QTableWidgetItem(str(rep["name"])))
+            self.scouting_table.setItem(row, 2, QTableWidgetItem(str(rep["position"])))
+            self.scouting_table.setItem(row, 3, QTableWidgetItem(str(rep["overall"])))
+            self.scouting_table.setItem(row, 4, QTableWidgetItem(str(rep["scout_note"])))
+            board_item = self.career.recruiting_board.get(recruit_id, {})
+            progress = int(board_item.get("last_offer_progress", 0))
+            bar = QProgressBar()
+            bar.setRange(0, 100)
+            bar.setValue(progress)
+            bar.setFormat(f"{progress}%")
+            self.scouting_table.setCellWidget(row, 5, bar)
+
+    def _offer_selected_recruit_from_scouting(self) -> None:
+        if self.career is None or not hasattr(self, "scouting_table"):
+            return
+        row = self.scouting_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self.scouting_dialog or self, "Recruiting", "Select a recruit row first.")
+            return
+        recruit_id_item = self.scouting_table.item(row, 0)
+        if recruit_id_item is None:
+            return
+        recruit_id = recruit_id_item.text().strip()
+        min_offer = 250
+        max_offer = max(min_offer, self.career.recruiting_budget_remaining)
+        default_offer = min(650, max_offer)
+        offer, ok_offer = QInputDialog.getInt(
+            self.scouting_dialog or self,
+            "Recruiting Offer",
+            f"Enter salary offer (remaining budget ${self.career.recruiting_budget_remaining}):",
+            default_offer,
+            min_offer,
+            max_offer,
+            25,
+        )
+        if not ok_offer:
+            return
+        self._send_recruit_offer(recruit_id, offer)
+        self._populate_scouting_table()
+
+    def _send_recruit_offer(self, recruit_id: str, offer: int) -> None:
+        if self.career is None:
+            return
+        try:
+            _, accepted, reason = self.career_manager.offer_recruit(self.career, recruit_id, offer)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Recruiting", str(exc))
+            return
         self.career_log.append(f"Recruiting offer {recruit_id}: {'Accepted' if accepted else 'Rejected'} - {reason}")
         self.career_log.append("-" * 70)
         self.refresh_career_view()
