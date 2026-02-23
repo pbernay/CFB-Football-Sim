@@ -155,4 +155,4 @@ Notes:
 - Added strategy planning support with predefined profiles plus per-week custom game plans in career mode; strategy choices now feed simulation scoring tendencies.
 - Added lineup/starter planning hooks and roster management UI to preview player details and set starters for tactical boosts.
 - Expanded ratings visibility with per-player impact ratings in roster view and strategy-aware simulation logs/CLI options.
-
+- Replaced the Tkinter GUI with a PySide6-based interface featuring a dedicated Main Menu dashboard, persistent sidebar navigation, and mode-specific pages for Single Game, Season, and Career workflows.

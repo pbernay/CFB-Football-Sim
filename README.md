@@ -81,7 +81,7 @@ python -m cfbSimulation.main --gui
 
 From the GUI you can:
 
-- Choose from **Single Game**, **Season Mode**, and **Career Mode** using the game mode selector.
+- Navigate from a redesigned **Main Menu** and sidebar into **Single Game**, **Season Mode**, and **Career Mode**.
 - See a football helmet preview, team ratings (OVR/OFF/DEF/ST), and top players while selecting teams.
 - Play one-off matchups in Single Game mode.
 - Run a full week-by-week season in Season Mode.

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 
 from cfbSimulation.data.repository import DatabaseRepository
-from cfbSimulation.gui import launch_gui
 from cfbSimulation.logic.simulator import GameSimulator, format_scoreboard
 
 
@@ -62,6 +61,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.gui:
+        from cfbSimulation.gui import launch_gui
+
         launch_gui()
         return
 
