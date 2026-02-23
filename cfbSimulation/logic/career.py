@@ -62,6 +62,8 @@ class CoachCareer:
     roster: list[dict[str, str | int]] = field(default_factory=list)
     weekly_progress_notes: list[str] = field(default_factory=list)
     offseason_summary: list[str] = field(default_factory=list)
+    coaching_staff: dict[str, dict[str, str | int]] = field(default_factory=dict)
+    staff_hiring_pool: list[dict[str, str | int]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,23 @@ class DecisionScenario:
 
 
 class CareerManager:
+    STAFF_ROLES: tuple[str, ...] = (
+        "Head Coach",
+        "Offensive Coordinator",
+        "Defensive Coordinator",
+        "Special Teams Coordinator",
+        "QB Coach",
+        "RB Coach",
+        "OL Coach",
+        "WR Coach",
+        "TE Coach",
+        "LB Coach",
+        "DL Coach",
+        "DB Coach",
+        "ST Coach",
+        "Head Scout",
+    )
+
     def __init__(
         self,
         repository: DatabaseRepository | None = None,
@@ -101,6 +120,37 @@ class CareerManager:
         self.random = random.Random(seed)
         self.roster_manager = RosterDynamicsManager(seed=seed)
         self._decision_scenarios = self._build_decision_scenarios()
+
+    def _build_default_staff(self, coach_name: str) -> dict[str, dict[str, str | int]]:
+        staff: dict[str, dict[str, str | int]] = {
+            "Head Coach": {
+                "staff_id": "staff-hc-user",
+                "name": coach_name,
+                "role": "Head Coach",
+                "overall": 70,
+                "potential": 85,
+            }
+        }
+        for role in self.STAFF_ROLES:
+            if role == "Head Coach":
+                continue
+            staff[role] = self._generate_staff_candidate(role)
+        return staff
+
+    def _generate_staff_candidate(self, role: str) -> dict[str, str | int]:
+        first = self.random.choice(("Avery", "Jordan", "Taylor", "Parker", "Drew", "Devon", "Reese", "Quinn", "Riley", "Blake"))
+        last = self.random.choice(("Hayes", "Manning", "Franklin", "Waller", "Dixon", "Brock", "Hughes", "Holland", "Reed", "Nolan"))
+        return {
+            "staff_id": f"staff-{self.random.randint(10000, 99999)}",
+            "name": f"{first} {last}",
+            "role": role,
+            "overall": self.random.randint(52, 86),
+            "potential": self.random.randint(65, 95),
+            "specialty": self.random.choice(("QB", "RB", "WR", "TE", "OL", "DL", "LB", "DB", "ST")) if role == "Head Scout" else "",
+        }
+
+    def _staff_overall(self, career: CoachCareer, role: str, default: int = 60) -> int:
+        return int(career.coaching_staff.get(role, {}).get("overall", default))
 
     @staticmethod
     def _build_decision_scenarios() -> tuple[DecisionScenario, ...]:
@@ -228,7 +278,9 @@ class CareerManager:
             schedule=schedule,
             ai_difficulty=ai_difficulty,
             roster=roster,
+            coaching_staff=self._build_default_staff(coach_name.strip()),
         )
+        career.staff_hiring_pool = self.generate_staff_hiring_pool(career)
         self.save(career)
         return career
 
@@ -259,6 +311,59 @@ class CareerManager:
     def recruiting_progress_from_score(score: float) -> int:
         return max(0, min(100, int(round((score / 16.0) * 100))))
 
+
+    def generate_staff_hiring_pool(self, career: CoachCareer, candidates_per_role: int = 2) -> list[dict[str, str | int]]:
+        pool: list[dict[str, str | int]] = []
+        for role in self.STAFF_ROLES:
+            if role == "Head Coach":
+                continue
+            for _ in range(candidates_per_role):
+                candidate = self._generate_staff_candidate(role)
+                candidate["available_for"] = role
+                pool.append(candidate)
+        return pool
+
+    def promote_staff_member(self, career: CoachCareer, from_role: str, to_role: str) -> CoachCareer:
+        if from_role == "Head Scout" or to_role == "Head Scout":
+            raise ValueError("Head Scout cannot be promoted or reassigned.")
+        if from_role == "Head Coach" or to_role == "Head Coach":
+            raise ValueError("Head Coach role is reserved for the user profile.")
+        if from_role not in career.coaching_staff or to_role not in career.coaching_staff:
+            raise ValueError("Invalid staff roles for promotion.")
+        career.coaching_staff[from_role], career.coaching_staff[to_role] = (
+            career.coaching_staff[to_role],
+            career.coaching_staff[from_role],
+        )
+        career.coaching_staff[from_role]["role"] = from_role
+        career.coaching_staff[to_role]["role"] = to_role
+        self.save(career)
+        return career
+
+    def hire_staff_candidate(self, career: CoachCareer, staff_id: str, role: str) -> CoachCareer:
+        if role == "Head Coach":
+            raise ValueError("Head Coach cannot be replaced.")
+        candidate = next((c for c in career.staff_hiring_pool if str(c.get("staff_id")) == staff_id), None)
+        if candidate is None:
+            raise ValueError("Staff candidate not found in hiring pool.")
+        if str(candidate.get("available_for")) != role:
+            raise ValueError(f"Candidate is not available for {role}.")
+        payload = dict(candidate)
+        payload["role"] = role
+        payload.pop("available_for", None)
+        career.coaching_staff[role] = payload
+        career.staff_hiring_pool = [c for c in career.staff_hiring_pool if str(c.get("staff_id")) != staff_id]
+        self.save(career)
+        return career
+
+    def scout_accuracy(self, career: CoachCareer, true_potential: int) -> int:
+        scout_ovr = self._staff_overall(career, "Head Scout", default=58)
+        error_band = max(1, 16 - scout_ovr // 6)
+        return max(55, min(99, true_potential + self.random.randint(-error_band, error_band)))
+
+    def scouting_points_regen(self, career: CoachCareer) -> int:
+        scout_ovr = self._staff_overall(career, "Head Scout", default=58)
+        return max(12, min(42, 8 + scout_ovr // 3))
+
     def invest_in_scouting(self, career: CoachCareer, investment: int) -> CoachCareer:
         spend = max(0, min(career.scouting_points, investment))
         if spend <= 0:
@@ -269,7 +374,9 @@ class CareerManager:
         career.scouting_reports = reports
         for recruit in reports:
             recruit_payload = dict(recruit)
-            recruit_payload["potential"] = int(recruit_payload.get("overall", 60)) + self.random.randint(5, 16)
+            true_potential = int(recruit_payload.get("overall", 60)) + self.random.randint(5, 16)
+            recruit_payload["potential"] = max(60, min(99, true_potential))
+            recruit_payload["scouted_potential"] = self.scout_accuracy(career, recruit_payload["potential"])
             career.recruiting_board[str(recruit["recruit_id"])] = recruit_payload
         self.save(career)
         return career
@@ -384,14 +491,17 @@ class CareerManager:
         career.morale = max(20, min(100, career.morale + (1 if outcome == "W" else -1)))
 
         team_success = (career.wins - career.losses) / max(1, next_game.week)
-        progress_updates = self.roster_manager.weekly_progression(career.roster, team_success)
+        development_bonus = self.position_coach_development_bonus(career)
+        progress_updates = self.roster_manager.weekly_progression(career.roster, team_success + development_bonus)
         if career.player_development_bonus > 0:
             for _ in range(career.player_development_bonus):
-                progress_updates.extend(self.roster_manager.weekly_progression(career.roster, team_success + 0.08))
+                progress_updates.extend(self.roster_manager.weekly_progression(career.roster, team_success + development_bonus + 0.08))
             career.player_development_bonus = max(0, career.player_development_bonus - 1)
+        self.apply_position_coach_performance_boost(career)
         if progress_updates:
             career.weekly_progress_notes = progress_updates[-10:]
 
+        career.scouting_points = min(220, career.scouting_points + self.scouting_points_regen(career))
         career.current_week = next_game.week + 1
         self._update_ai_memory(career, my_strategy)
         self.stats_manager.record_game(result.home_team, result.away_team)
@@ -402,14 +512,58 @@ class CareerManager:
         required_positions = ("QB", "RB", "WR", "TE", "OT", "OG", "C", "DE", "DT", "LB", "CB", "S", "K", "P")
         starters: dict[str, str] = {}
         roster = career.roster or self._build_initial_roster(career.team_id)
+        oc_rating = self._staff_overall(career, "Offensive Coordinator", default=60)
+        dc_rating = self._staff_overall(career, "Defensive Coordinator", default=60)
+        stc_rating = self._staff_overall(career, "Special Teams Coordinator", default=60)
         for position in required_positions:
             candidates = [p for p in roster if str(p.get("position", "")) == position]
             if not candidates:
                 continue
-            best = max(candidates, key=lambda p: int(p.get("overall", 0)))
-            starters[position] = str(best.get("player_id", best.get("recruit_id", "")))
+            if position in {"QB", "RB", "WR", "TE", "OT", "OG", "C"}:
+                competency = oc_rating
+            elif position in {"K", "P"}:
+                competency = stc_rating
+            else:
+                competency = dc_rating
+            slip = max(0, (70 - competency) // 7)
+            ranked = sorted(candidates, key=lambda p: int(p.get("overall", 0)), reverse=True)
+            pick_index = min(len(ranked) - 1, slip)
+            pick = ranked[pick_index]
+            starters[position] = str(pick.get("player_id", pick.get("recruit_id", "")))
         return starters
 
+
+    def position_coach_development_bonus(self, career: CoachCareer) -> float:
+        coach_roles = ("QB Coach", "RB Coach", "OL Coach", "WR Coach", "TE Coach", "LB Coach", "DL Coach", "DB Coach", "ST Coach")
+        avg = sum(self._staff_overall(career, role, default=60) for role in coach_roles) / len(coach_roles)
+        return (avg - 60.0) / 220.0
+
+    def apply_position_coach_performance_boost(self, career: CoachCareer) -> None:
+        role_for_position = {
+            "QB": "QB Coach",
+            "RB": "RB Coach",
+            "WR": "WR Coach",
+            "TE": "TE Coach",
+            "OT": "OL Coach",
+            "OG": "OL Coach",
+            "C": "OL Coach",
+            "LB": "LB Coach",
+            "DE": "DL Coach",
+            "DT": "DL Coach",
+            "CB": "DB Coach",
+            "S": "DB Coach",
+            "K": "ST Coach",
+            "P": "ST Coach",
+        }
+        for player in career.roster:
+            role = role_for_position.get(str(player.get("position", "")))
+            if role is None:
+                continue
+            coach_ovr = self._staff_overall(career, role, default=60)
+            if coach_ovr >= 82 and self.random.random() < 0.20:
+                player["overall"] = min(99, int(player.get("overall", 60)) + 1)
+            elif coach_ovr <= 55 and self.random.random() < 0.08:
+                player["overall"] = max(45, int(player.get("overall", 60)) - 1)
 
     def _counter_strategy(self, strategy: StrategyProfile, career: CoachCareer) -> StrategyProfile:
         adaptation = career.ai_adaptation.get(strategy.name, 0)
@@ -479,8 +633,9 @@ class CareerManager:
         career.roster = updated_roster
         career.signed_recruits = []
         career.offseason_summary = summary[-20:]
-        career.scouting_points = min(200, career.scouting_points + 60)
+        career.scouting_points = min(220, career.scouting_points + self.scouting_points_regen(career) + 30)
         career.scouting_reports = []
+        career.staff_hiring_pool = self.generate_staff_hiring_pool(career)
         career.schedule = self._generate_schedule(career.team_id, weeks=weeks)
         career.current_week = 1
         career.season += 1
@@ -507,7 +662,7 @@ class CareerManager:
             data = json.load(save_file)
 
         schedule = [ScheduledGame(**game) for game in data.get("schedule", [])]
-        return CoachCareer(
+        career = CoachCareer(
             coach_name=data["coach_name"],
             coach_style=data.get("coach_style", "Balanced"),
             team_id=data["team_id"],
@@ -540,4 +695,9 @@ class CareerManager:
             roster=data.get("roster", self._build_initial_roster(data["team_id"])),
             weekly_progress_notes=data.get("weekly_progress_notes", []),
             offseason_summary=data.get("offseason_summary", []),
+            coaching_staff=data.get("coaching_staff", self._build_default_staff(data.get("coach_name", "Coach"))),
+            staff_hiring_pool=data.get("staff_hiring_pool", []),
         )
+        if not career.staff_hiring_pool:
+            career.staff_hiring_pool = self.generate_staff_hiring_pool(career)
+        return career

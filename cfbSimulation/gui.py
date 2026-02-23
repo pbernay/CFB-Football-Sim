@@ -479,6 +479,7 @@ class CFBGameGUI(QMainWindow):
             ("Roster", self.open_roster_manager),
             ("Player Stats", self.open_player_stats_dialog),
             ("Scout Recruits", self.open_scouting_dialog),
+            ("Manage Staff", self.open_staff_dialog),
             ("New Season", self.new_career_season),
         ]:
             btn = QPushButton(label)
@@ -543,13 +544,17 @@ class CFBGameGUI(QMainWindow):
         else:
             upcoming = "Season complete."
 
+        oc_ovr = self.career.coaching_staff.get("Offensive Coordinator", {}).get("overall", "-")
+        dc_ovr = self.career.coaching_staff.get("Defensive Coordinator", {}).get("overall", "-")
+        scout_ovr = self.career.coaching_staff.get("Head Scout", {}).get("overall", "-")
         self.career_status.setText(
             f"Coach {self.career.coach_name} ({self.career.coach_style}) | "
             f"Lvl {self.career.coach_level} Prestige {self.career.prestige} Morale {self.career.morale} | "
             f"{self.career.team_name} | Season {self.career.season} | "
             f"AI {self.career.ai_difficulty} | Record {self.career.wins}-{self.career.losses} | "
             f"Budget ${self.career.recruiting_budget_remaining}/${self.career.recruiting_budget} | "
-            f"ScoutPts {self.career.scouting_points} | Signed {len(self.career.signed_recruits)} | Next: {upcoming}"
+            f"ScoutPts {self.career.scouting_points} | Signed {len(self.career.signed_recruits)} | "
+            f"OC {oc_ovr} | DC {dc_ovr} | Scout {scout_ovr} | Next: {upcoming}"
         )
         for idx in range(self.career_team.combo.count()):
             label = self.career_team.combo.itemText(idx)
@@ -847,8 +852,8 @@ class CFBGameGUI(QMainWindow):
         controls.addStretch()
         layout.addLayout(controls)
 
-        self.scouting_table = QTableWidget(0, 6)
-        self.scouting_table.setHorizontalHeaderLabels(["Recruit ID", "Name", "Pos", "OVR", "Scout Outlook", "Offer Progress"])
+        self.scouting_table = QTableWidget(0, 7)
+        self.scouting_table.setHorizontalHeaderLabels(["Recruit ID", "Name", "Pos", "OVR", "Scouted POT", "Scout Outlook", "Offer Progress"])
         layout.addWidget(self.scouting_table)
 
         def run_scouting() -> None:
@@ -877,14 +882,15 @@ class CFBGameGUI(QMainWindow):
             self.scouting_table.setItem(row, 1, QTableWidgetItem(str(rep["name"])))
             self.scouting_table.setItem(row, 2, QTableWidgetItem(str(rep["position"])))
             self.scouting_table.setItem(row, 3, QTableWidgetItem(str(rep["overall"])))
-            self.scouting_table.setItem(row, 4, QTableWidgetItem(str(rep["scout_note"])))
+            self.scouting_table.setItem(row, 4, QTableWidgetItem(str(rep.get("scouted_potential", "?"))))
+            self.scouting_table.setItem(row, 5, QTableWidgetItem(str(rep["scout_note"])))
             board_item = self.career.recruiting_board.get(recruit_id, {})
             progress = int(board_item.get("last_offer_progress", 0))
             bar = QProgressBar()
             bar.setRange(0, 100)
             bar.setValue(progress)
             bar.setFormat(f"{progress}%")
-            self.scouting_table.setCellWidget(row, 5, bar)
+            self.scouting_table.setCellWidget(row, 6, bar)
 
     def _offer_selected_recruit_from_scouting(self) -> None:
         if self.career is None or not hasattr(self, "scouting_table"):
@@ -925,6 +931,108 @@ class CFBGameGUI(QMainWindow):
         self.career_log.append(f"Recruiting offer {recruit_id}: {'Accepted' if accepted else 'Rejected'} - {reason}")
         self.career_log.append("-" * 70)
         self.refresh_career_view()
+
+    def open_staff_dialog(self) -> None:
+        if self.career is None:
+            QMessageBox.information(self, "No Career", "Create or load a career first.")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Coaching Staff Management")
+        dialog.resize(980, 560)
+        layout = QVBoxLayout(dialog)
+
+        table = QTableWidget(0, 5)
+        table.setHorizontalHeaderLabels(["Role", "Name", "OVR", "Potential", "Specialty"])
+        layout.addWidget(table)
+
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("Role:"))
+        role_combo = QComboBox()
+        role_combo.addItems([r for r in self.career_manager.STAFF_ROLES if r != "Head Coach"])
+        controls.addWidget(role_combo)
+
+        controls.addWidget(QLabel("Candidate:"))
+        candidate_combo = QComboBox()
+        controls.addWidget(candidate_combo, 2)
+
+        hire_btn = QPushButton("Hire Selected")
+        controls.addWidget(hire_btn)
+
+        controls.addWidget(QLabel("Promote/Demote:"))
+        from_combo = QComboBox()
+        to_combo = QComboBox()
+        movable_roles = [r for r in self.career_manager.STAFF_ROLES if r not in {"Head Coach", "Head Scout"}]
+        from_combo.addItems(movable_roles)
+        to_combo.addItems(movable_roles)
+        controls.addWidget(from_combo)
+        controls.addWidget(to_combo)
+        swap_btn = QPushButton("Swap Roles")
+        controls.addWidget(swap_btn)
+        layout.addLayout(controls)
+
+        def refresh_table() -> None:
+            staff_rows = [(role, data) for role, data in self.career.coaching_staff.items()]
+            table.setRowCount(len(staff_rows))
+            for row, (role, data) in enumerate(staff_rows):
+                vals = [
+                    role,
+                    str(data.get("name", "")),
+                    str(data.get("overall", "")),
+                    str(data.get("potential", "")),
+                    str(data.get("specialty", "-")) or "-",
+                ]
+                for col, value in enumerate(vals):
+                    table.setItem(row, col, QTableWidgetItem(value))
+
+        def refresh_candidates() -> None:
+            role = role_combo.currentText()
+            candidate_combo.clear()
+            for candidate in self.career.staff_hiring_pool:
+                if str(candidate.get("available_for")) == role:
+                    candidate_combo.addItem(
+                        f"{candidate.get('staff_id')} | {candidate.get('name')} (OVR {candidate.get('overall')}, POT {candidate.get('potential')})"
+                    )
+
+        def hire_selected() -> None:
+            selected = candidate_combo.currentText()
+            if not selected:
+                QMessageBox.information(dialog, "Staff", "No candidate available for selected role.")
+                return
+            staff_id = selected.split("|", 1)[0].strip()
+            try:
+                self.career_manager.hire_staff_candidate(self.career, staff_id, role_combo.currentText())
+            except ValueError as exc:
+                QMessageBox.warning(dialog, "Staff", str(exc))
+                return
+            self.career_log.append(f"Hired new {role_combo.currentText()}: {selected}")
+            self.career_log.append("-" * 70)
+            refresh_table()
+            refresh_candidates()
+            self.refresh_career_view()
+
+        def swap_roles() -> None:
+            from_role = from_combo.currentText()
+            to_role = to_combo.currentText()
+            if from_role == to_role:
+                QMessageBox.information(dialog, "Staff", "Choose two different roles.")
+                return
+            try:
+                self.career_manager.promote_staff_member(self.career, from_role, to_role)
+            except ValueError as exc:
+                QMessageBox.warning(dialog, "Staff", str(exc))
+                return
+            self.career_log.append(f"Reassigned staff: {from_role} <-> {to_role}")
+            self.career_log.append("-" * 70)
+            refresh_table()
+            self.refresh_career_view()
+
+        role_combo.currentTextChanged.connect(refresh_candidates)
+        hire_btn.clicked.connect(hire_selected)
+        swap_btn.clicked.connect(swap_roles)
+        refresh_table()
+        refresh_candidates()
+        dialog.exec()
 
     def new_career_season(self) -> None:
         if self.career is None:
