@@ -26,6 +26,10 @@ class PlayerRecord:
     last_name: str
     position: str
     overall: int
+    age: int = 20
+    year: str = "Freshman"
+    potential: int = 60
+    player_status: str = "Current"
 
 
 class DatabaseRepository:
@@ -75,6 +79,7 @@ class DatabaseRepository:
             rows = conn.execute(
                 """
                 SELECT PlayerID, TeamID, Fname, Lname, Position, Overall
+                    , Age, Year, Potential, PlayerStatus
                 FROM Players
                 WHERE TeamID = ?
                 ORDER BY Overall DESC
@@ -90,6 +95,10 @@ class DatabaseRepository:
                 last_name=row["Lname"],
                 position=row["Position"],
                 overall=int(row["Overall"]),
+                age=int(row["Age"]),
+                year=row["Year"],
+                potential=int(row["Potential"]),
+                player_status=row["PlayerStatus"],
             )
             for row in rows
         ]

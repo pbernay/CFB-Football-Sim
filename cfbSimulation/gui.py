@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSplitter,
+    QSpinBox,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -313,7 +314,10 @@ class CFBGameGUI(QMainWindow):
             QMessageBox.information(self, "No Team", "Select a team first.")
             return
 
-        players = self.repository.get_players_for_team(team_id)
+        if self.career and self.career.team_id == team_id and self.career.roster:
+            players = self.career.roster
+        else:
+            players = self.repository.get_players_for_team(team_id)
         positions = ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]
         current = self.single_home_starters if side == "home" else self.single_away_starters
 
@@ -472,6 +476,8 @@ class CFBGameGUI(QMainWindow):
             ("Set Game Plan", self.open_strategy_dialog),
             ("Roster", self.open_roster_manager),
             ("Player Stats", self.open_player_stats_dialog),
+            ("Scout Recruits", self.open_scouting_dialog),
+            ("Make Offer", self.open_recruiting_dialog),
             ("Make Decision", self.make_career_decision),
             ("New Season", self.new_career_season),
         ]:
@@ -541,7 +547,8 @@ class CFBGameGUI(QMainWindow):
             f"Coach {self.career.coach_name} ({self.career.coach_style}) | "
             f"Lvl {self.career.coach_level} Prestige {self.career.prestige} Morale {self.career.morale} | "
             f"{self.career.team_name} | Season {self.career.season} | "
-            f"AI {self.career.ai_difficulty} | Record {self.career.wins}-{self.career.losses} | Next: {upcoming}"
+            f"AI {self.career.ai_difficulty} | Record {self.career.wins}-{self.career.losses} | "
+            f"ScoutPts {self.career.scouting_points} | Signed {len(self.career.signed_recruits)} | Next: {upcoming}"
         )
         self.career_schedule.clear()
         for game in self.career.schedule:
@@ -629,7 +636,10 @@ class CFBGameGUI(QMainWindow):
             QMessageBox.information(self, "No Team", "Select a team first.")
             return
 
-        players = self.repository.get_players_for_team(team_id)
+        if self.career and self.career.team_id == team_id and self.career.roster:
+            players = self.career.roster
+        else:
+            players = self.repository.get_players_for_team(team_id)
         if not players:
             QMessageBox.information(self, "No Players", "No roster found for selected team.")
             return
@@ -649,13 +659,25 @@ class CFBGameGUI(QMainWindow):
             return int(round(overall * weight))
 
         for row, player in enumerate(players):
-            starter = "Yes" if player.player_id in starters.values() else "No"
+            if isinstance(player, dict):
+                player_id = str(player.get("player_id", player.get("recruit_id", "")))
+                first_name = str(player.get("first_name", ""))
+                last_name = str(player.get("last_name", ""))
+                position = str(player.get("position", ""))
+                overall = int(player.get("overall", 0))
+            else:
+                player_id = player.player_id
+                first_name = player.first_name
+                last_name = player.last_name
+                position = player.position
+                overall = player.overall
+            starter = "Yes" if player_id in starters.values() else "No"
             values = [
-                player.player_id,
-                f"{player.first_name} {player.last_name}",
-                player.position,
-                str(player.overall),
-                str(player_impact(player.position, player.overall)),
+                player_id,
+                f"{first_name} {last_name}",
+                position,
+                str(overall),
+                str(player_impact(position, overall)),
                 starter,
             ]
             for col, value in enumerate(values):
@@ -773,11 +795,83 @@ class CFBGameGUI(QMainWindow):
         dialog.exec()
         return result["value"]
 
+    def open_scouting_dialog(self) -> None:
+        if self.career is None:
+            QMessageBox.information(self, "No Career", "Create or load a career first.")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Scouting")
+        dialog.resize(760, 420)
+        layout = QVBoxLayout(dialog)
+
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("Invest scouting points:"))
+        spend = QSpinBox()
+        spend.setRange(5, max(5, self.career.scouting_points))
+        spend.setSingleStep(5)
+        spend.setValue(min(20, max(5, self.career.scouting_points)))
+        controls.addWidget(spend)
+        scout_btn = QPushButton("Run Scouting")
+        controls.addWidget(scout_btn)
+        controls.addStretch()
+        layout.addLayout(controls)
+
+        table = QTableWidget(0, 5)
+        table.setHorizontalHeaderLabels(["Recruit ID", "Name", "Pos", "OVR", "Scout Outlook"])
+        layout.addWidget(table)
+
+        def run_scouting() -> None:
+            try:
+                self.career_manager.invest_in_scouting(self.career, spend.value())
+            except ValueError as exc:
+                QMessageBox.warning(dialog, "Scouting", str(exc))
+                return
+            reports = self.career.scouting_reports
+            table.setRowCount(len(reports))
+            for row, rep in enumerate(reports):
+                table.setItem(row, 0, QTableWidgetItem(str(rep["recruit_id"])))
+                table.setItem(row, 1, QTableWidgetItem(str(rep["name"])))
+                table.setItem(row, 2, QTableWidgetItem(str(rep["position"])))
+                table.setItem(row, 3, QTableWidgetItem(str(rep["overall"])))
+                table.setItem(row, 4, QTableWidgetItem(str(rep["scout_note"])))
+            self.refresh_career_view()
+
+        scout_btn.clicked.connect(run_scouting)
+        dialog.exec()
+
+    def open_recruiting_dialog(self) -> None:
+        if self.career is None:
+            QMessageBox.information(self, "No Career", "Create or load a career first.")
+            return
+        board = list(self.career.recruiting_board.values())
+        if not board:
+            QMessageBox.information(self, "Recruiting", "No recruits on your board yet. Scout first.")
+            return
+
+        options = [f"{r['recruit_id']} | {r['name']} ({r['position']}) OVR {r['overall']}" for r in board]
+        selected, ok = QInputDialog.getItem(self, "Recruiting Offer", "Select recruit:", options, editable=False)
+        if not ok:
+            return
+        recruit_id = selected.split("|", 1)[0].strip()
+        offer, ok_offer = QInputDialog.getInt(self, "Recruiting Offer", "Enter salary offer (NIL package):", 650, 250, 2200, 25)
+        if not ok_offer:
+            return
+        _, accepted, reason = self.career_manager.offer_recruit(self.career, recruit_id, offer)
+        self.career_log.append(f"Recruiting offer {recruit_id}: {'Accepted' if accepted else 'Rejected'} - {reason}")
+        self.career_log.append("-" * 70)
+        self.refresh_career_view()
+
     def new_career_season(self) -> None:
         if self.career is None:
             QMessageBox.information(self, "No Career", "Create or load a career first.")
             return
         self.career = self.career_manager.reset_for_new_season(self.career)
+        if self.career.offseason_summary:
+            self.career_log.append("Offseason Week Summary:")
+            for line in self.career.offseason_summary:
+                self.career_log.append(f"- {line}")
+            self.career_log.append("-" * 70)
         self.career_log.append(f"Started Season {self.career.season}.\n{'-' * 70}")
         self.refresh_career_view()
 

@@ -160,3 +160,5 @@ Notes:
 - Added AI strategy memory in career mode so CPU teams adapt when the user repeatedly uses the same game plan.
 - Added persistent player season statistics tracking (`player_stats.json`) and integrated automatic stat updates after simulated games.
 - Added player stats viewing/comparison tools in both GUI (Career page "Player Stats") and CLI (`--player-stats`, `--compare-players`).
+- Added career-mode scouting and recruiting workflows: coaches can spend scouting points to discover randomized recruits (with inferred potential notes), then submit NIL-style offers that can be accepted/rejected based on team reputation, offer level, and recruit aspirations.
+- Added career roster dynamics with weekly progression/regression and offseason churn (graduation/draft departures, offseason rating changes, and signed recruits joining next season) plus offseason summary logging in the GUI.
