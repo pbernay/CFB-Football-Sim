@@ -8,7 +8,7 @@ from tkinter import messagebox, ttk
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import CareerManager, CoachCareer, DecisionScenario
 from cfbSimulation.logic.season import SeasonManager, SeasonPhase, SeasonState
-from cfbSimulation.logic.simulator import GameSimulator, TeamSnapshot, format_scoreboard
+from cfbSimulation.logic.simulator import GameSimulator, StrategyProfile, TeamSnapshot, format_scoreboard
 
 
 class TeamSelectorPreview:
@@ -121,6 +121,9 @@ class CFBGameGUI:
         self.season_state: SeasonState | None = None
 
         self.teams = self.repository.list_teams(limit=None)
+        self.strategy_options = self.simulator.predefined_strategies()
+        self.single_home_starters: dict[str, str] = {}
+        self.single_away_starters: dict[str, str] = {}
 
         self.main = ttk.Frame(root, padding=12)
         self.main.pack(fill=tk.BOTH, expand=True)
@@ -169,7 +172,18 @@ class CFBGameGUI:
 
         actions = ttk.Frame(self.mode_container)
         actions.pack(fill=tk.X, pady=10)
-        ttk.Button(actions, text="Simulate Single Game", command=self.play_single_game).pack(anchor="w")
+
+        ttk.Label(actions, text="Home Strategy:").pack(side=tk.LEFT)
+        self.single_home_strategy = tk.StringVar(value="Balanced")
+        ttk.Combobox(actions, textvariable=self.single_home_strategy, values=list(self.strategy_options), width=16, state="readonly").pack(side=tk.LEFT, padx=(4, 12))
+
+        ttk.Label(actions, text="Away Strategy:").pack(side=tk.LEFT)
+        self.single_away_strategy = tk.StringVar(value="Balanced")
+        ttk.Combobox(actions, textvariable=self.single_away_strategy, values=list(self.strategy_options), width=16, state="readonly").pack(side=tk.LEFT, padx=(4, 12))
+
+        ttk.Button(actions, text="Edit Home Starters", command=lambda: self.open_lineup_dialog(self.single_home, "home")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(actions, text="Edit Away Starters", command=lambda: self.open_lineup_dialog(self.single_away, "away")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(actions, text="Simulate Single Game", command=self.play_single_game).pack(side=tk.LEFT, padx=8)
 
         self.single_output = tk.Text(self.mode_container, height=20, wrap="word")
         self.single_output.pack(fill=tk.BOTH, expand=True)
@@ -184,13 +198,125 @@ class CFBGameGUI:
             messagebox.showerror("Invalid Matchup", "Home and away teams must be different.")
             return
 
-        result = self.simulator.simulate_single_game(home_id, away_id)
+        result = self.simulator.simulate_single_game(
+            home_id,
+            away_id,
+            home_strategy=self.strategy_options[self.single_home_strategy.get()],
+            away_strategy=self.strategy_options[self.single_away_strategy.get()],
+            home_starters=self.single_home_starters,
+            away_starters=self.single_away_starters,
+        )
         lines = [format_scoreboard(result)]
         if result.drives_log:
             lines.extend(["", "Scoring Summary:"])
             lines.extend([f"- {line}" for line in result.drives_log])
         self.single_output.delete("1.0", tk.END)
         self.single_output.insert(tk.END, "\n".join(lines))
+
+
+    def open_lineup_dialog(self, selector: TeamSelectorPreview, side: str = "home") -> None:
+        team_id = selector.get_selected_team_id()
+        if not team_id:
+            messagebox.showinfo("No Team", "Select a team first.")
+            return
+
+        players = self.repository.get_players_for_team(team_id)
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Set Starters - {team_id}")
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Choose one starter per position for bonus impact.").pack(anchor="w", padx=10, pady=(10, 6))
+        positions = ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]
+
+        current = self.single_home_starters if side == "home" else self.single_away_starters
+        selected: dict[str, tk.StringVar] = {}
+        by_pos = {pos: [p for p in players if p.position == pos] for pos in positions}
+
+        table = ttk.Frame(dialog)
+        table.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        for pos in positions:
+            row = ttk.Frame(table)
+            row.pack(fill=tk.X, pady=2)
+            ttk.Label(row, text=f"{pos}:", width=6).pack(side=tk.LEFT)
+            opts = [f"{p.player_id} | {p.first_name} {p.last_name} ({p.overall})" for p in by_pos.get(pos, [])][:8]
+            value = tk.StringVar(value=opts[0] if opts else "")
+            if pos in current and opts:
+                match = next((o for o in opts if o.startswith(current[pos])), opts[0])
+                value.set(match)
+            selected[pos] = value
+            combo = ttk.Combobox(row, textvariable=value, values=opts, state="readonly", width=42)
+            combo.pack(side=tk.LEFT)
+
+        def apply_lineup() -> None:
+            plan = {}
+            for pos, var in selected.items():
+                raw = var.get().strip()
+                if raw:
+                    plan[pos] = raw.split("|", 1)[0].strip()
+            if side == "home":
+                self.single_home_starters = plan
+            else:
+                self.single_away_starters = plan
+            dialog.destroy()
+
+        controls = ttk.Frame(dialog)
+        controls.pack(fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(controls, text="Apply", command=apply_lineup).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
+
+    def open_strategy_dialog(self) -> None:
+        if self.career is None:
+            messagebox.showinfo("No Career", "Create or load a career first.")
+            return
+
+        next_game = self.career_manager.get_next_game(self.career)
+        if next_game is None:
+            messagebox.showinfo("No Games", "Season is complete. Start a new season.")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Game Plan - Week {next_game.week}")
+        dialog.grab_set()
+
+        ttk.Label(dialog, text=f"Opponent: {next_game.opponent_name}", font=("Arial", 11, "bold")).pack(anchor="w", padx=10, pady=(10, 2))
+        ttk.Label(dialog, text="Strategy:").pack(anchor="w", padx=10)
+
+        strategy_var = tk.StringVar(value=self.career.strategy_plan.get(next_game.week, "Balanced"))
+        ttk.Combobox(dialog, textvariable=strategy_var, values=list(self.strategy_options), state="readonly", width=24).pack(anchor="w", padx=10, pady=(0, 8))
+
+        ttk.Label(dialog, text="Planned starters (optional):").pack(anchor="w", padx=10)
+        players = self.repository.get_players_for_team(self.career.team_id)
+        positions = ["QB", "RB", "WR", "TE", "LB", "CB", "S", "K"]
+        selected = {}
+        existing = self.career.starter_plan.get(next_game.week, {})
+        for pos in positions:
+            row = ttk.Frame(dialog)
+            row.pack(anchor="w", padx=10, pady=1)
+            ttk.Label(row, text=f"{pos}", width=6).pack(side=tk.LEFT)
+            opts = ["(No change)"] + [f"{p.player_id} | {p.first_name} {p.last_name} ({p.overall})" for p in players if p.position == pos][:8]
+            default = "(No change)"
+            if pos in existing:
+                default = next((o for o in opts if o.startswith(existing[pos])), "(No change)")
+            var = tk.StringVar(value=default)
+            selected[pos] = var
+            ttk.Combobox(row, textvariable=var, values=opts, state="readonly", width=42).pack(side=tk.LEFT)
+
+        def apply_plan() -> None:
+            self.career_manager.set_week_strategy(self.career, next_game.week, strategy_var.get())
+            starters = {}
+            for pos, var in selected.items():
+                if var.get() != "(No change)":
+                    starters[pos] = var.get().split("|", 1)[0].strip()
+            self.career_manager.set_week_starters(self.career, next_game.week, starters)
+            self.career_log.insert(tk.END, f"Game plan set for Week {next_game.week}: {strategy_var.get()}\n{'-' * 70}\n")
+            self.career_log.see(tk.END)
+            self.refresh_career_view()
+            dialog.destroy()
+
+        controls = ttk.Frame(dialog)
+        controls.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(controls, text="Save Plan", command=apply_plan).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
 
     def build_season_mode(self) -> None:
         top = ttk.Frame(self.mode_container)
@@ -298,6 +424,8 @@ class CFBGameGUI:
         ttk.Button(buttons, text="Start Career", command=self.start_career_mode).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Load Career", command=self.load_career_mode).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="Play Next Week", command=self.play_career_week).pack(side=tk.LEFT, padx=6)
+        ttk.Button(buttons, text="Set Game Plan", command=self.open_strategy_dialog).pack(side=tk.LEFT, padx=6)
+        ttk.Button(buttons, text="Roster", command=self.open_roster_manager).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="Make Decision", command=self.make_career_decision).pack(side=tk.LEFT, padx=6)
         ttk.Button(buttons, text="New Season", command=self.new_career_season).pack(side=tk.LEFT, padx=6)
 
@@ -357,7 +485,8 @@ class CFBGameGUI:
 
         next_game = self.career_manager.get_next_game(self.career)
         if next_game:
-            upcoming = f"Week {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'})"
+            planned = self.career.strategy_plan.get(next_game.week, "Balanced")
+            upcoming = f"Week {next_game.week} vs {next_game.opponent_name} ({'Home' if next_game.is_home else 'Away'}) [{planned}]"
         else:
             upcoming = "Season complete."
 
@@ -389,6 +518,52 @@ class CFBGameGUI:
         self.career_log.insert(tk.END, "\n".join(lines) + "\n" + ("-" * 70) + "\n")
         self.career_log.see(tk.END)
         self.refresh_career_view()
+
+    def open_roster_manager(self) -> None:
+        team_id = self.career.team_id if self.career else self.career_team.get_selected_team_id()
+        if not team_id:
+            messagebox.showinfo("No Team", "Select a team first.")
+            return
+
+        players = self.repository.get_players_for_team(team_id)
+        if not players:
+            messagebox.showinfo("No Players", "No roster found for selected team.")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Team Roster")
+        dialog.geometry("760x500")
+        dialog.grab_set()
+
+        current_week = self.career.current_week if self.career else 1
+        starters = self.career.starter_plan.get(current_week, {}) if self.career else {}
+
+        columns = ("player_id", "name", "position", "overall", "impact", "starter")
+        tree = ttk.Treeview(dialog, columns=columns, show="headings", height=16)
+        for col, width in [("player_id", 90), ("name", 180), ("position", 70), ("overall", 70), ("impact", 70), ("starter", 90)]:
+            tree.heading(col, text=col.replace("_", " ").title())
+            tree.column(col, width=width, anchor="w")
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        def player_impact(position: str, overall: int) -> int:
+            weight = {"QB": 1.2, "RB": 1.05, "WR": 1.0, "TE": 0.95, "LB": 1.0, "CB": 1.0, "S": 0.95, "K": 0.9}.get(position, 0.92)
+            return int(round(overall * weight))
+
+        for p in players:
+            starter = "Yes" if p.player_id in starters.values() else "No"
+            tree.insert("", tk.END, values=(p.player_id, f"{p.first_name} {p.last_name}", p.position, p.overall, player_impact(p.position, p.overall), starter))
+
+        detail = tk.StringVar(value="Select a player to view details.")
+        ttk.Label(dialog, textvariable=detail, wraplength=730).pack(anchor="w", padx=10, pady=(0, 8))
+
+        def show_details(_event=None) -> None:
+            selected = tree.selection()
+            if not selected:
+                return
+            vals = tree.item(selected[0], "values")
+            detail.set(f"{vals[1]} ({vals[2]}) | Overall: {vals[3]} | Impact Rating: {vals[4]} | Starter Week {current_week}: {vals[5]}")
+
+        tree.bind("<<TreeviewSelect>>", show_details)
 
     def make_career_decision(self) -> None:
         if self.career is None:
