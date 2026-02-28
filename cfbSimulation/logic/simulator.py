@@ -6,6 +6,7 @@ import random
 from dataclasses import dataclass, field
 
 from cfbSimulation.data.repository import DatabaseRepository, PlayerRecord, TeamRecord
+from cfbSimulation.logic.advanced_ratings import team_potential_rating, unit_position_rating
 
 
 OFFENSE_POSITIONS = {"QB", "RB", "WR", "TE", "OT", "OG", "C"}
@@ -30,6 +31,10 @@ class TeamSnapshot:
     defensive_rating: float
     special_teams_rating: float
     overall_rating: float
+    potential_rating: float
+    offense_position_rating: float
+    defense_position_rating: float
+    special_position_rating: float
     strategy: StrategyProfile = field(default_factory=lambda: StrategyProfile(name="Balanced"))
     lineup_modifier: float = 0.0
     score: int = 0
@@ -72,13 +77,20 @@ class GameSimulator:
         if not players:
             raise ValueError(f"No players found for team ID: {team_id}")
 
-        offense = self._average_by_positions(players, OFFENSE_POSITIONS)
-        defense = self._average_by_positions(players, DEFENSE_POSITIONS)
-        special = self._average_by_positions(players, {"K", "P"})
+        offense_base = self._average_by_positions(players, OFFENSE_POSITIONS)
+        defense_base = self._average_by_positions(players, DEFENSE_POSITIONS)
+        special_base = self._average_by_positions(players, {"K", "P"})
+
+        offense_position_rating = unit_position_rating(players, OFFENSE_POSITIONS, starters=8)
+        defense_position_rating = unit_position_rating(players, DEFENSE_POSITIONS, starters=8)
+        special_position_rating = unit_position_rating(players, {"K", "P"}, starters=2)
+
         lineup_modifier = self._lineup_modifier(players, starters or {})
-        offense = round(offense + lineup_modifier, 2)
-        defense = round(defense + lineup_modifier, 2)
+        offense = round(((offense_base * 0.55) + (offense_position_rating * 0.45)) + lineup_modifier, 2)
+        defense = round(((defense_base * 0.55) + (defense_position_rating * 0.45)) + lineup_modifier, 2)
+        special = round(((special_base * 0.7) + (special_position_rating * 0.3)), 2)
         overall = round((offense + defense + special) / 3, 2)
+        potential_rating = team_potential_rating(players)
 
         return TeamSnapshot(
             team_id=team.team_id,
@@ -88,6 +100,10 @@ class GameSimulator:
             defensive_rating=defense,
             special_teams_rating=special,
             overall_rating=overall,
+            potential_rating=potential_rating,
+            offense_position_rating=offense_position_rating,
+            defense_position_rating=defense_position_rating,
+            special_position_rating=special_position_rating,
             strategy=strategy or self.predefined_strategies()["Balanced"],
             lineup_modifier=lineup_modifier,
             players=players,

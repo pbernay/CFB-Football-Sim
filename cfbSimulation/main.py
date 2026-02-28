@@ -127,16 +127,18 @@ def main() -> None:
         away_strategy=strategies.get(args.away_strategy, strategies["Balanced"]),
     )
 
-    print("Team Ratings:")
+    print("Team Ratings (Advanced):")
     print(
         f" - {result.home_team.name}: "
         f"OVR {result.home_team.overall_rating} | OFF {result.home_team.offensive_rating} "
-        f"| DEF {result.home_team.defensive_rating} | ST {result.home_team.special_teams_rating}"
+        f"| DEF {result.home_team.defensive_rating} | ST {result.home_team.special_teams_rating} "
+        f"| POT {result.home_team.potential_rating}"
     )
     print(
         f" - {result.away_team.name}: "
         f"OVR {result.away_team.overall_rating} | OFF {result.away_team.offensive_rating} "
-        f"| DEF {result.away_team.defensive_rating} | ST {result.away_team.special_teams_rating}"
+        f"| DEF {result.away_team.defensive_rating} | ST {result.away_team.special_teams_rating} "
+        f"| POT {result.away_team.potential_rating}"
     )
 
     print(format_scoreboard(result))
