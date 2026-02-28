@@ -9,6 +9,11 @@ from enum import Enum
 from cfbSimulation.data.repository import DatabaseRepository
 from cfbSimulation.logic.career import ScheduledGame
 from cfbSimulation.logic.player_stats import PlayerStatsManager
+from cfbSimulation.logic.program_structure import (
+    Division,
+    PollRanking,
+    ProgramStructureEngine,
+)
 from cfbSimulation.logic.simulator import GameResult, GameSimulator
 
 
@@ -33,6 +38,9 @@ class SeasonState:
     playoff_losses: int = 0
     phase: SeasonPhase = SeasonPhase.REGULAR
     champion: bool = False
+    team_division: str = Division.FBS.value
+    ap_poll: list[PollRanking] = field(default_factory=list)
+    fcs_poll: list[PollRanking] = field(default_factory=list)
 
 
 class SeasonManager:
@@ -44,17 +52,42 @@ class SeasonManager:
         seed: int | None = None,
     ) -> None:
         self.repository = repository or DatabaseRepository()
-        self.simulator = simulator or GameSimulator(repository=self.repository, seed=seed)
-        self.stats_manager = stats_manager or PlayerStatsManager(repository=self.repository, seed=seed)
+        self.simulator = simulator or GameSimulator(
+            repository=self.repository, seed=seed
+        )
+        self.stats_manager = stats_manager or PlayerStatsManager(
+            repository=self.repository, seed=seed
+        )
         self.random = random.Random(seed)
+        self.program_engine = ProgramStructureEngine(
+            self.repository, self.simulator, seed=seed
+        )
 
-    def start_season(self, team_id: str, weeks: int = 12, season_number: int = 1) -> SeasonState:
+    def start_season(
+        self, team_id: str, weeks: int = 12, season_number: int = 1
+    ) -> SeasonState:
         team = self.repository.get_team(team_id)
         if team is None:
             raise ValueError(f"Unknown team ID: {team_id}")
 
         schedule = self._generate_schedule(team_id=team_id, weeks=weeks)
-        return SeasonState(team_id=team_id, team_name=team.name, season=season_number, schedule=schedule)
+        contexts = self.program_engine.build_contexts()
+        ap_poll = self.program_engine.preseason_rankings(Division.FBS)
+        fcs_poll = self.program_engine.preseason_rankings(Division.FCS)
+        division = (
+            contexts.get(team_id).division.value
+            if team_id in contexts
+            else Division.FBS.value
+        )
+        return SeasonState(
+            team_id=team_id,
+            team_name=team.name,
+            season=season_number,
+            schedule=schedule,
+            team_division=division,
+            ap_poll=ap_poll,
+            fcs_poll=fcs_poll,
+        )
 
     def _generate_schedule(self, team_id: str, weeks: int = 12) -> list[ScheduledGame]:
         team_ids = [tid for tid in self.repository.iter_team_ids() if tid != team_id]
@@ -92,7 +125,9 @@ class SeasonManager:
                     return game
         return None
 
-    def play_next_game(self, state: SeasonState) -> tuple[SeasonState, GameResult, ScheduledGame]:
+    def play_next_game(
+        self, state: SeasonState
+    ) -> tuple[SeasonState, GameResult, ScheduledGame]:
         next_game = self.get_next_game(state)
         if next_game is None:
             if state.phase == SeasonPhase.REGULAR:
@@ -111,6 +146,15 @@ class SeasonManager:
             my_score, opp_score = result.away_team.score, result.home_team.score
 
         self.stats_manager.record_game(result.home_team, result.away_team)
+        self.program_engine.record_game(
+            home_id,
+            away_id,
+            result.home_team.score,
+            result.away_team.score,
+            state.current_week,
+        )
+        state.ap_poll = self.program_engine.weekly_rankings(Division.FBS)
+        state.fcs_poll = self.program_engine.weekly_rankings(Division.FCS)
 
         next_game.played = True
         next_game.my_score = my_score
@@ -170,7 +214,11 @@ class SeasonManager:
         )
 
     def _pick_playoff_opponent(self, team_id: str, excluded: set[str]) -> str:
-        candidates = [tid for tid in self.repository.iter_team_ids() if tid != team_id and tid not in excluded]
+        candidates = [
+            tid
+            for tid in self.repository.iter_team_ids()
+            if tid != team_id and tid not in excluded
+        ]
         if not candidates:
             raise ValueError("No eligible playoff opponents found.")
         return self.random.choice(candidates)
