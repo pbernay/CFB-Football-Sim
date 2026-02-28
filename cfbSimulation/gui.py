@@ -117,7 +117,7 @@ class TeamSelectorPreview(QWidget):
         self.helmet.set_team(snapshot)
         self.ratings_label.setText(
             f"OVR {snapshot.overall_rating} | OFF {snapshot.offensive_rating} | "
-            f"DEF {snapshot.defensive_rating} | ST {snapshot.special_teams_rating}"
+            f"DEF {snapshot.defensive_rating} | ST {snapshot.special_teams_rating} | POT {snapshot.potential_rating}"
         )
         self.players.clear()
         for player in snapshot.players[:5]:
