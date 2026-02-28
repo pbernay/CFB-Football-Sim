@@ -173,3 +173,4 @@ Notes:
 - Added advanced team rating support with potential-driven metrics and position-based unit ratings, surfaced in both CLI and team selection previews.
 - Added a configurable boom/bust framework spec (`spec/boom_bust.yaml`) and integrated per-game effective-rating multipliers in the active simulator flow via a new boom/bust engine.
 - Added program structure modeling with generated FBS/FCS division assignment, program tier profiles, and AP/FCS poll tracking that updates from simulated season games; recruiting offer reputation now factors in division visibility and program-tier interest multipliers.
+- Added a configurable recruiting/scouting system design spec (`spec/recruiting_sim.yaml`) covering difficulty visibility, head-scout modeling, progressive reveal, scouting/recruiting actions, and commitment dynamics.

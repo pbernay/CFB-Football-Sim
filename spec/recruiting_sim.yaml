@@ -1,0 +1,464 @@
+recruiting_sim:
+  version: "1.0"
+  cadence: "weekly"
+  roster_model:
+    realistic_rosters: true
+    scholarship_limit: 85
+    class_size_target:
+      min: 18
+      max: 28
+
+  difficulty:
+    modes: ["EASY", "NORMAL", "HARD", "Heisman"]
+    hard_rules:
+      recruit_view_visibility:
+        show_true_overall: false
+        show_true_potential: false
+        show_true_attributes: false
+        show_star_rating: "scouted_only" # scouted_only | always | never
+        show_personality: "scouted_only"
+        show_recommendation: true
+        show_confidence: true
+      info_source_priority:
+        # what the UI should show by default
+        primary_display: ["recommendation_letter", "recommendation_text", "confidence"]
+        secondary_display: ["scouted_star_projection", "scouted_attribute_bands"]
+
+  # ----------------------------
+  # HEAD SCOUT (ONLY SCOUT)
+  # ----------------------------
+  staff:
+    head_scout:
+      enabled: true
+      hiring_firing: true
+      program_tier_advantage:
+        enabled: true
+        description: "Elite programs tend to have better scouts available/affordable."
+        effects:
+          candidate_pool_rating_bias:
+            elite_programs_add: +8
+            mid_programs_add: +0
+            small_programs_add: -6
+          salary_multiplier_bias:
+            elite_programs_mult: 1.10
+            small_programs_mult: 0.90
+
+      ratings:
+        OVR:
+          description: "Primary determinant of scouting accuracy, discovery, and speed."
+          range: [0, 100]
+        specialties:
+          description: "Position-specific skill that improves accuracy for that position group."
+          range: [0, 100]
+        traits_optional:
+          RISK_APPETITE:
+            description: "Higher = more willing to recommend uncertain prospects (more gems + more busts)."
+            range: [0, 100]
+          WORK_ETHIC:
+            description: "Higher = faster weekly progress per scouting action."
+            range: [0, 100]
+
+      outputs:
+        recommendation:
+          letter_scale: ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"]
+          description_templates:
+            # Verbal descriptions shown with letter grade (pick based on projection + risk + fit)
+            immediate_impact:
+              - "Immediate impact starter potential."
+              - "Can contribute right away with proper development."
+            developmental:
+              - "Developmental prospect with upside."
+              - "Raw tools—needs time and coaching."
+            high_ceiling:
+              - "High ceiling athlete; rare traits if it all clicks."
+              - "Boom/bust profile—could be special."
+            safe_floor:
+              - "Safe projection; reliable contributor."
+              - "High floor player; limited elite upside."
+            scheme_fit:
+              - "Strong fit for our scheme and needs."
+              - "Fit concerns—skills may not translate cleanly."
+
+        confidence:
+          description: "How trustworthy current scouting read is (0-100)."
+          display: true
+
+  # ----------------------------
+  # RECRUIT DATA MODEL
+  # ----------------------------
+  recruits:
+    universe:
+      visible_rank_pool:
+        top_n_known: 500
+        rankings_update: "weekly"
+      hidden_recruits:
+        enabled: true
+        appear_during_season: true
+        weekly_appearance_rate:
+          base: 0.020 # 2% chance per week to spawn new hidden recruits into tracked pool
+          modifiers:
+            small_school_bonus: 1.20
+            elite_school_bonus: 0.85
+        notes: "Hidden recruits can appear and enter/affect the Top 500 over time."
+
+    recruit_fields:
+      identity:
+        id: "string"
+        name: "string"
+        position: "enum"
+        region: "enum" # you can define states/pipelines later
+      true_talent:
+        true_overall:
+          range: [0, 100]
+          hidden_from_user_on_hard: true
+        true_potential:
+          range: [0, 100]
+          hidden_from_user_on_hard: true
+        true_attributes:
+          enabled: true
+          range: [0, 100]
+          hidden_from_user_on_hard: true
+          # minimal attribute groups; expand freely
+          groups:
+            physical: ["SPD", "ACC", "AGI", "STR", "JMP", "STA"]
+            mental: ["AWR", "DISC", "CLU", "CONS"]
+            football: ["pos_specific_key_attrs"] # depends on position
+      stars:
+        true_star_rating:
+          range: [1, 5]
+          hidden_from_user_on_hard: "unless_scouted"
+      personality:
+        enabled: true
+        archetypes:
+          - "LOYAL"
+          - "FAME_SEEKER"
+          - "MONEY_FOCUSED"
+          - "PLAYING_TIME"
+          - "COACH_LOYAL"
+          - "PROGRAM_BUILDER"
+          - "RISK_TAKER"
+        hidden_from_user_on_hard: "unless_scouted"
+      recruiting:
+        interest:
+          range: [0, 100]
+        shortlist:
+          max_schools_considered: 10
+        commitment_state:
+          enum: ["UNCOMMITTED", "SOFT_COMMIT", "HARD_COMMIT", "SIGNED"]
+        weekly_volatility:
+          description: "How much interest can swing week-to-week."
+          range: [0, 100]
+
+  # ----------------------------
+  # SCOUTING VISIBILITY MODEL
+  # ----------------------------
+  scouting:
+    philosophy: >
+      Player has TRUE values. Head Scout provides ESTIMATES + CONFIDENCE that improve
+      with scouting actions over time. National ranking/ratings are noisy and not always accurate.
+
+    national_ratings:
+      enabled: true
+      description: "Baseline public info; can be wrong. Scout refines this into a team-specific evaluation."
+      fields:
+        national_rank:
+          visible: true
+          updates_weekly: true
+        national_star_projection:
+          visible: true
+          noise_model: "moderate" # low|moderate|high
+        national_position_rank:
+          visible: true
+          noise_model: "moderate"
+
+    progressive_reveal:
+      enabled: true
+      stages:
+        - stage: 0
+          name: "Public Only"
+          unlocked_by: "none"
+          visible_fields: ["national_rank", "national_star_projection", "position", "region"]
+        - stage: 1
+          name: "Initial Scout Read"
+          unlocked_by: "any_scout_action"
+          visible_fields: ["recommendation_letter", "recommendation_text", "confidence"]
+        - stage: 2
+          name: "Attribute Bands"
+          unlocked_by: "scout_progress >= 35"
+          visible_fields: ["scouted_attribute_bands", "scouted_star_projection"]
+        - stage: 3
+          name: "Better Accuracy"
+          unlocked_by: "scout_progress >= 65"
+          visible_fields: ["scouted_overall_range", "scouted_potential_range", "personality_hint"]
+        - stage: 4
+          name: "Near-Final Eval"
+          unlocked_by: "scout_progress >= 90"
+          visible_fields: ["tight_overall_range", "tight_potential_range", "personality_revealed"]
+
+      scout_progress:
+        range: [0, 100]
+        weekly_decay:
+          enabled: false
+          amount: 0
+
+    accuracy_model:
+      description: >
+        Scout returns estimated values with error. Error shrinks as scout_progress rises and
+        with higher Head Scout OVR + position specialty. Some residual error remains
+        to preserve uncertainty.
+
+      base_error:
+        overall_points_std: 8.0 # base standard deviation in rating points at low progress
+        potential_points_std: 10.0
+        attributes_points_std: 9.0
+        min_error_floor:
+          overall_points_std: 2.0
+          potential_points_std: 3.0
+          attributes_points_std: 2.5
+
+      error_reduction:
+        from_progress:
+          description: "More scouting reduces error."
+          overall_std_mult_formula: "lerp(1.00, 0.35, scout_progress/100)"
+          potential_std_mult_formula: "lerp(1.00, 0.45, scout_progress/100)"
+          attributes_std_mult_formula: "lerp(1.00, 0.40, scout_progress/100)"
+        from_scout_ovr:
+          description: "Better scouts reduce error."
+          std_mult_formula: "lerp(1.10, 0.70, head_scout_OVR/100)"
+        from_position_specialty:
+          description: "Specialty for that position reduces error further."
+          std_mult_formula: "lerp(1.05, 0.75, head_scout_specialty_pos/100)"
+
+      recommendation_mapping:
+        description: "Map scouted estimate + risk to letter grade."
+        inputs:
+          - scouted_overall_center
+          - scouted_potential_center
+          - risk_flag # boom/bust or uncertainty
+          - team_need_bonus # optional
+          - scheme_fit_bonus # optional
+        output:
+          letter_grade: "enum"
+          text_template: "enum"
+        example_weights:
+          overall: 0.55
+          potential: 0.35
+          risk_penalty: 0.10
+
+      confidence_model:
+        description: "Confidence rises with progress and scout skill; lowered by high volatility recruits."
+        base_formula: >
+          confidence = clamp(
+            20
+            + 55*(scout_progress/100)
+            + 15*(head_scout_OVR/100)
+            + 10*(head_scout_specialty_pos/100)
+            - 15*(recruit_weekly_volatility/100),
+            0, 100
+          )
+
+    bands_and_ranges:
+      attribute_bands:
+        description: "Instead of exact numbers, show bands early (Hard-friendly)."
+        bands:
+          - { name: "Elite", min: 90, max: 100 }
+          - { name: "Great", min: 75, max: 89 }
+          - { name: "Good", min: 60, max: 74 }
+          - { name: "Avg", min: 45, max: 59 }
+          - { name: "Poor", min: 0, max: 44 }
+      overall_range_width_by_confidence:
+        description: "Width of shown range shrinks as confidence grows."
+        mapping:
+          - { conf_min: 0, conf_max: 29, width: 18 }
+          - { conf_min: 30, conf_max: 49, width: 14 }
+          - { conf_min: 50, conf_max: 69, width: 10 }
+          - { conf_min: 70, conf_max: 84, width: 7 }
+          - { conf_min: 85, conf_max: 100, width: 4 }
+
+  # ----------------------------
+  # SCOUTING ACTIONS (ALL INCLUDED)
+  # ----------------------------
+  scouting_actions:
+    currency: "recruiting_budget"
+    weekly_limits:
+      per_recruit_actions: 2
+      total_actions: 20 # tune per difficulty later
+    actions:
+      watch_film:
+        cost: 50
+        progress_gain:
+          base: 10
+          scout_work_ethic_mult: true
+        improves:
+          - "attributes_estimate"
+          - "position_fit"
+      attend_game:
+        cost: 120
+        progress_gain:
+          base: 16
+        improves:
+          - "physical_traits_estimate"
+          - "intangibles_hint"
+      private_workout:
+        cost: 200
+        progress_gain:
+          base: 22
+        improves:
+          - "speed_accel_confirm"
+          - "position_specific_confirm"
+      interview:
+        cost: 80
+        progress_gain:
+          base: 12
+        improves:
+          - "personality_hint"
+          - "commitment_risk_estimate"
+      background_check:
+        cost: 60
+        progress_gain:
+          base: 8
+        improves:
+          - "discipline_risk"
+          - "academics_risk"
+      combine_testing:
+        cost: 180
+        progress_gain:
+          base: 20
+        improves:
+          - "verified_measurements"
+          - "variance_reduction_physical"
+      analytics_evaluation:
+        cost: 90
+        progress_gain:
+          base: 14
+        improves:
+          - "performance_projection"
+          - "hidden_gem_detection"
+      visit_high_school_coach:
+        cost: 70
+        progress_gain:
+          base: 10
+        improves:
+          - "personality_hint"
+          - "work_ethic_hint"
+      notes:
+        - "All progress gains are scaled by head scout OVR and position specialty."
+        - "Some actions unlock specific reveals sooner (e.g., Interview for personality)."
+
+  # ----------------------------
+  # ENHANCED RECRUITING (STRATEGY)
+  # ----------------------------
+  recruiting:
+    philosophy: >
+      Weekly actions and budget create tradeoffs. Better scouting yields better targeting.
+      Recruits respond to pitches based on priorities + personality + program factors.
+
+    resources:
+      recruiting_budget:
+        weekly_refresh: false
+        seasonal_budget:
+          base_by_program_tier:
+            elite: 12000
+            mid: 9000
+            small: 6500
+          difficulty_mods:
+            EASY: 1.10
+            NORMAL: 1.00
+            HARD: 0.95
+
+    recruit_priorities:
+      enabled: true
+      categories:
+        - "PLAYING_TIME"
+        - "PRESTIGE"
+        - "NIL"
+        - "LOCATION"
+        - "ACADEMICS"
+        - "COACH_RELATIONSHIP"
+        - "FACILITIES"
+        - "SCHEME_FIT"
+      generation:
+        per_recruit_weights_sum_to: 1.0
+
+    program_factors:
+      prestige: 0-100
+      coach_reputation: 0-100
+      facilities: 0-100
+      nil_budget: 0-100
+      location_distance: "computed"
+      conference_prestige: 0-100
+      depth_chart_need: "computed"
+      scout_quality: "head_scout_OVR"
+
+    weekly_actions:
+      # (These are recruiting actions, separate from scouting_actions, but can share budget)
+      enabled: true
+      action_points:
+        enabled: true
+        weekly_points_by_tier:
+          elite: 18
+          mid: 16
+          small: 14
+        difficulty_mods:
+          EASY: +2
+          NORMAL: +0
+          HARD: -2
+      actions:
+        offer_scholarship:
+          ap_cost: 2
+          budget_cost: 0
+          effect: "starts serious recruitment; enables visits"
+        phone_call:
+          ap_cost: 1
+          budget_cost: 25
+          effect: "small steady interest gain; better for relationship priorities"
+        coach_visit:
+          ap_cost: 3
+          budget_cost: 150
+          effect: "big relationship gain; stronger for COACH_RELATIONSHIP recruits"
+        campus_visit:
+          ap_cost: 4
+          budget_cost: 250
+          effect: "big prestige/facilities gain; can trigger commitment checks"
+        nil_pitch:
+          ap_cost: 2
+          budget_cost: 0
+          uses_nil_budget: true
+          effect: "interest gain scaled by NIL priority"
+        scheme_pitch:
+          ap_cost: 1
+          budget_cost: 0
+          effect: "interest gain scaled by scheme fit; needs scouting to be effective"
+        playing_time_pitch:
+          ap_cost: 1
+          budget_cost: 0
+          effect: "interest gain scaled by depth chart opportunity"
+        send_highlights_package:
+          ap_cost: 1
+          budget_cost: 40
+          effect: "small gain; better early weeks"
+        notes:
+          - "You can tune AP/budget to hit desired pacing."
+          - "Scouting accuracy should influence scheme fit / role pitch success."
+
+    commitment_logic:
+      weekly_commit_check:
+        enabled: true
+        base_chance: 0.02
+        formula_notes: >
+          Each week, if your school is in top group and interest exceeds a threshold,
+          roll commitment. Personality modifies flip/decommit chance.
+      thresholds:
+        soft_commit_interest: 75
+        hard_commit_interest: 88
+      competition_visibility:
+        show_competing_schools: true
+        show_sign_probability: "optional"
+
+    small_school_hidden_gem_support:
+      enabled: true
+      description: "Small schools get slightly better hidden-gem discovery and value targeting."
+      effects:
+        hidden_recruit_spawn_bonus_mult: 1.20
+        analytics_hidden_gem_detection_bonus: 1.15
+        recruit_interest_decay_reduction: 0.95
