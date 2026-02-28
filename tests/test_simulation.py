@@ -1,4 +1,5 @@
 from cfbSimulation.data.repository import DatabaseRepository
+from cfbSimulation.logic.boom_bust import BoomBustContext
 from cfbSimulation.logic.simulator import GameSimulator
 
 
@@ -87,3 +88,32 @@ def test_high_potential_team_reports_higher_potential_rating(tmp_path):
     low = sim.build_team_snapshot("tIDL")
 
     assert high.potential_rating > low.potential_rating
+
+
+def test_boom_bust_effective_ratings_remain_bounded():
+    sim = GameSimulator(seed=7)
+    snapshot = sim.build_team_snapshot(
+        "tID1",
+        boom_bust_context=BoomBustContext(home=True, rivalry=True, playoff=True, weather="snow", crowd=95),
+    )
+
+    assert 0 <= snapshot.offensive_rating <= 100
+    assert 0 <= snapshot.defensive_rating <= 100
+    assert 0 <= snapshot.special_teams_rating <= 100
+    assert 0.75 <= snapshot.offense_gpm <= 1.25
+    assert 0.75 <= snapshot.defense_gpm <= 1.25
+    assert 0.75 <= snapshot.special_gpm <= 1.25
+
+
+def test_home_context_has_higher_average_gpm_than_road_context():
+    home_values: list[float] = []
+    road_values: list[float] = []
+
+    for seed in range(20):
+        sim = GameSimulator(seed=seed)
+        home = sim.build_team_snapshot("tID1", boom_bust_context=BoomBustContext(home=True, crowd=30))
+        road = sim.build_team_snapshot("tID1", boom_bust_context=BoomBustContext(road=True, crowd=90))
+        home_values.append((home.offense_gpm + home.defense_gpm + home.special_gpm) / 3)
+        road_values.append((road.offense_gpm + road.defense_gpm + road.special_gpm) / 3)
+
+    assert sum(home_values) / len(home_values) > sum(road_values) / len(road_values)
