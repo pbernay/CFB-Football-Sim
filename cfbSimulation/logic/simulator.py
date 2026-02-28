@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from cfbSimulation.data.repository import DatabaseRepository, PlayerRecord, TeamRecord
 from cfbSimulation.logic.advanced_ratings import team_potential_rating, unit_position_rating
+from cfbSimulation.logic.boom_bust import BoomBustContext, BoomBustEngine
 
 
 OFFENSE_POSITIONS = {"QB", "RB", "WR", "TE", "OT", "OG", "C"}
@@ -37,6 +38,9 @@ class TeamSnapshot:
     special_position_rating: float
     strategy: StrategyProfile = field(default_factory=lambda: StrategyProfile(name="Balanced"))
     lineup_modifier: float = 0.0
+    offense_gpm: float = 1.0
+    defense_gpm: float = 1.0
+    special_gpm: float = 1.0
     score: int = 0
     players: list[PlayerRecord] = field(default_factory=list)
 
@@ -68,6 +72,7 @@ class GameSimulator:
         team_id: str,
         strategy: StrategyProfile | None = None,
         starters: dict[str, str] | None = None,
+        boom_bust_context: BoomBustContext | None = None,
     ) -> TeamSnapshot:
         team: TeamRecord | None = self.repository.get_team(team_id)
         if team is None:
@@ -86,9 +91,13 @@ class GameSimulator:
         special_position_rating = unit_position_rating(players, {"K", "P"}, starters=2)
 
         lineup_modifier = self._lineup_modifier(players, starters or {})
+        boom_bust_effect = BoomBustEngine(self.random).build_team_effect(players, boom_bust_context or BoomBustContext())
         offense = round(((offense_base * 0.55) + (offense_position_rating * 0.45)) + lineup_modifier, 2)
         defense = round(((defense_base * 0.55) + (defense_position_rating * 0.45)) + lineup_modifier, 2)
         special = round(((special_base * 0.7) + (special_position_rating * 0.3)), 2)
+        offense = round(max(0.0, min(100.0, offense * boom_bust_effect.offense_gpm)), 2)
+        defense = round(max(0.0, min(100.0, defense * boom_bust_effect.defense_gpm)), 2)
+        special = round(max(0.0, min(100.0, special * boom_bust_effect.special_gpm)), 2)
         overall = round((offense + defense + special) / 3, 2)
         potential_rating = team_potential_rating(players)
 
@@ -106,6 +115,9 @@ class GameSimulator:
             special_position_rating=special_position_rating,
             strategy=strategy or self.predefined_strategies()["Balanced"],
             lineup_modifier=lineup_modifier,
+            offense_gpm=boom_bust_effect.offense_gpm,
+            defense_gpm=boom_bust_effect.defense_gpm,
+            special_gpm=boom_bust_effect.special_gpm,
             players=players,
         )
 
@@ -143,9 +155,21 @@ class GameSimulator:
         away_starters: dict[str, str] | None = None,
         home_rating_adjustment: float = 0.0,
         away_rating_adjustment: float = 0.0,
+        home_boom_bust_context: BoomBustContext | None = None,
+        away_boom_bust_context: BoomBustContext | None = None,
     ) -> GameResult:
-        home = self.build_team_snapshot(home_team_id, strategy=home_strategy, starters=home_starters)
-        away = self.build_team_snapshot(away_team_id, strategy=away_strategy, starters=away_starters)
+        home = self.build_team_snapshot(
+            home_team_id,
+            strategy=home_strategy,
+            starters=home_starters,
+            boom_bust_context=home_boom_bust_context or BoomBustContext(home=True),
+        )
+        away = self.build_team_snapshot(
+            away_team_id,
+            strategy=away_strategy,
+            starters=away_starters,
+            boom_bust_context=away_boom_bust_context or BoomBustContext(road=True),
+        )
 
         self._apply_rating_adjustment(home, home_rating_adjustment)
         self._apply_rating_adjustment(away, away_rating_adjustment)

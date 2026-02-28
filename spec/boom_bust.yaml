@@ -1,0 +1,278 @@
+boom_bust:
+  version: "1.1"
+  design_goal: >
+    Add controlled unpredictability. Players can overperform (boom) or underperform (bust)
+    based on their personal traits + game context. Base ratings never change; only
+    "effective ratings" for the current game/drive.
+
+  scale:
+    ratings_min: 0
+    ratings_max: 100
+    gpm:
+      description: "Game Performance Multiplier applied to selected ratings."
+      clamp_min: 0.75
+      clamp_max: 1.25
+
+  cadence:
+    mode: "per_game"            # per_game | per_drive | per_half
+    per_drive:
+      inherit_from_game: true   # drive swing starts at game swing and adds smaller noise
+      drive_noise_max_swing: 0.06
+
+  inputs_required:
+    player_traits:
+      - CONS   # consistency (variance control)
+      - CLU    # clutch (pressure stability)
+      - AWR    # awareness (reduces bust severity)
+    player_state_optional:
+      - fatigue        # 0-100
+      - morale         # 0-100
+      - confidence     # 0-100
+      - snap_share     # 0-1 for extreme events
+      - experience     # 0-100 (optional stabilizer)
+    game_context_optional:
+      - home           # bool
+      - road           # bool
+      - rivalry        # bool
+      - playoff        # bool
+      - weather        # clear|rain|snow|wind
+      - crowd          # 0-100 (stadium noise)
+      - travel_distance # miles or abstract 0-100
+      - kickoff_time   # day|night
+      - team_avg_leadership # 0-100
+      - matchup:       # optional numeric edges
+          off_pass: 0-100
+          def_pass: 0-100
+          off_run: 0-100
+          def_run: 0-100
+
+  rng:
+    distribution: "normal"   # normal|logistic|uniform
+    clamp_z:
+      enabled: true
+      min_z: -2.5
+      max_z: 2.5
+
+  volatility:
+    base_from_consistency:
+      formula: "(100 - CONS) / 100"
+      floor: 0.05
+      cap: 0.85
+    experience_stabilizer:
+      enabled: true
+      description: "More experience reduces volatility a bit."
+      volatility_mult_formula: "1 - 0.20 * (experience/100)"
+      clamp_min: 0.85
+      clamp_max: 1.00
+
+  swing:
+    max_swing_default: 0.25
+    max_swing_by_position:
+      QB: 0.22
+      RB: 0.27
+      WR: 0.30
+      TE: 0.25
+      OL: 0.18
+      DL: 0.26
+      LB: 0.24
+      CB: 0.28
+      S: 0.24
+      K: 0.20
+      P: 0.20
+    base_formula: "GPM = 1 + (z * volatility * max_swing)"
+
+  situation_modifiers:
+    enabled: true
+
+    home_field:
+      gpm_add: 0.01
+
+    road_game:
+      gpm_add_formula: "-0.02 * clamp((60 - AWR)/60, 0, 1)"
+
+    rivalry:
+      volatility_mult: 1.10
+      clutch_vol_offset_formula: "1 - 0.05 * (CLU/100)"
+      notes: "Rivalry increases chaos; clutch reduces the extra chaos."
+
+    playoff_or_championship:
+      volatility_mult: 1.12
+      low_clutch_flat_penalty:
+        threshold_clu: 55
+        gpm_add: -0.02
+
+    crowd_noise:
+      enabled: true
+      description: "Mainly affects offenses (especially QB/OL) on the road."
+      road_only: true
+      gpm_add_by_position:
+        QB: " -0.02 * (crowd/100)"
+        OL: " -0.01 * (crowd/100)"
+        WR: " -0.005 * (crowd/100)"
+        RB: " -0.005 * (crowd/100)"
+        TE: " -0.005 * (crowd/100)"
+      defense_bonus:
+        enabled: true
+        gpm_add_by_position:
+          DL: " +0.005 * (crowd/100)"
+          LB: " +0.003 * (crowd/100)"
+          CB: " +0.002 * (crowd/100)"
+          S:  " +0.002 * (crowd/100)"
+
+    travel:
+      enabled: true
+      description: "Long travel slightly penalizes low-stamina teams."
+      gpm_add_formula: "-0.02 * clamp((travel_distance_norm)/1.0, 0, 1) * clamp((60-STA)/60, 0, 1)"
+      travel_distance_norm_notes: "Normalize travel_distance to 0..1 in your pipeline."
+
+    weather:
+      enabled: true
+      tables:
+        clear:
+          default_gpm_add: 0.0
+        rain:
+          offense_skill_gpm_add: -0.02
+          kick_gpm_add: -0.02
+          fumble_risk_mult: 1.10
+        snow:
+          offense_skill_gpm_add: -0.03
+          kick_gpm_add: -0.03
+          fumble_risk_mult: 1.12
+        wind:
+          deep_pass_extra_penalty:
+            enabled: true
+            qb_deep_attr_gpm_add: -0.02
+          kick_gpm_add: -0.04
+
+    fatigue:
+      enabled: true
+      gpm_penalty:
+        threshold: 55
+        max_penalty: -0.06
+        formula: "max_penalty * clamp((threshold - fatigue)/threshold, 0, 1)"
+      volatility_mult:
+        threshold: 50
+        max_mult: 1.15
+        formula: "1 + (max_mult-1) * clamp((threshold - fatigue)/threshold, 0, 1)"
+
+    morale:
+      enabled: true
+      centered_at: 50
+      max_bonus: 0.05
+      max_penalty: -0.05
+      formula: >
+        if morale >= 50:
+          max_bonus * ((morale-50)/50)
+        else:
+          max_penalty * ((50-morale)/50)
+
+    confidence:
+      enabled: true
+      centered_at: 50
+      max_bonus: 0.03
+      max_penalty: -0.03
+
+    matchup:
+      enabled: true
+      description: "Optional small edge based on unit ratings."
+      scale: 0.03
+      pass_formula: "scale * clamp((off_pass - def_pass)/30, -1, 1)"
+      run_formula:  "scale * clamp((off_run - def_run)/30, -1, 1)"
+
+    team_leadership_stabilizer:
+      enabled: true
+      description: "Small global stabilizer based on avg leadership."
+      gpm_add_formula: "0.01 * clamp((team_avg_leadership - 50)/50, -1, 1)"
+      max_abs: 0.01
+
+  extreme_events:
+    enabled: true
+    description: "Rare extra swings layered on top of normal boom/bust."
+
+    eligibility:
+      min_snap_share: 0.30
+
+    hot_streak:
+      base_chance: 0.03
+      gpm_add: 0.10
+      chance_mult:
+        from_cons:
+          formula: "1 - 0.40 * (CONS/100)"
+        from_awr:
+          formula: "1 - 0.25 * (AWR/100)"
+
+    meltdown:
+      base_chance: 0.03
+      gpm_add: -0.10
+      chance_mult:
+        low_awr:
+          formula: "1 + 0.60 * clamp((65 - AWR)/65, 0, 1)"
+        road: 1.15
+        playoff: 1.15
+        high_clu_reduction:
+          formula: "1 - 0.35 * (CLU/100)"
+
+  leverage_moments:
+    enabled: true
+    description: "Optionally dampen negative swing during high leverage if clutch/awareness are high."
+    applies_when:
+      - "late_4q"
+      - "3rd_down"
+      - "4th_down"
+      - "red_zone"
+    protect_negative_only: true
+    late_4q:
+      start_minute: 8
+      max_negative_reduction: 0.40
+      formula: "max_negative_reduction * (CLU/100)"
+    awareness_protection:
+      max_negative_reduction: 0.20
+      formula: "max_negative_reduction * (AWR/100)"
+
+  attribute_application:
+    mode: "subset"  # subset | all | archetype_weighted
+    description: "Which ratings are affected by GPM. Base ratings remain unchanged."
+
+    per_position_targets:
+      ALL: ["AWR"]
+
+      QB: ["SAC","MAC","DAC","TOR","UPR","DEC","POK","PRS"]
+      RB: ["BCV","ELU","BTK","CAR","CTH","PBK"]
+      WR: ["REL","CTH","CIT","SPC","SRR","MRR","DRR"]
+      TE: ["CTH","CIT","SRR","MRR","PBK","RBK","IBL"]
+      OL: ["PBK","RBK","IBL","PBF","RBF","HND"]
+      DL: ["PMV","FMV","BSH","PRC","PUR","TAK"]
+      LB: ["TAK","BSH","PRC","PUR","MCV","ZCV","BLZ"]
+      CB: ["MCV","ZCV","PRS","PLB","CTH","JMP"]
+      S:  ["MCV","ZCV","PRC","PUR","TAK","HIT","PLB"]
+      K:  ["KPW","KAC","KCL"]
+      P:  ["PPW","PAC","CFC"]
+
+    attribute_mult:
+      enabled: true
+      description: >
+        Optional: convert a single GPM into slightly different multipliers per attribute,
+        so a QB can be "hot accuracy" but only mildly hot on decision-making, etc.
+      method: "category_weights"  # category_weights | per_attribute_noise
+      category_weights:
+        QB:
+          accuracy: 1.00
+          decision: 0.70
+          pocket: 0.80
+        WR:
+          hands: 0.90
+          routes: 1.00
+          contested: 0.85
+        RB:
+          vision: 1.00
+          security: 0.75
+          tackle_break: 0.95
+      clamp_min: 0.70
+      clamp_max: 1.30
+
+  tuning_defaults:
+    notes: "Start here, then tune to taste."
+    target_effects:
+      average_player_week_to_week_std_points: 4-7
+      star_player_week_to_week_std_points: 2-5
+      volatile_player_week_to_week_std_points: 7-12
